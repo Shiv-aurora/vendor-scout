@@ -1,5 +1,6 @@
 let data;
 let selectedMissionId;
+let actionPending = false;
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -8,12 +9,11 @@ const number = value => new Intl.NumberFormat("en-US").format(value ?? 0);
 const money = value => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value ?? 0);
 const money2 = value => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(value ?? 0);
 
-const stageOrder = ["discovering", "qualifying", "contacting", "negotiating", "comparing", "awaiting_approval", "approved"];
 const stageNames = {
   draft: "Mission ready",
   discovering: "Discovering suppliers",
   qualifying: "Qualifying candidates",
-  contacting: "Contacting suppliers",
+  contacting: "Ready for outreach",
   negotiating: "Negotiating terms",
   comparing: "Comparing quotes",
   awaiting_approval: "Waiting for approval",
@@ -22,10 +22,30 @@ const stageNames = {
   completed: "Completed"
 };
 
-async function api(path, options) {
+const progressByStatus = {
+  draft: 0,
+  discovering: 1,
+  qualifying: 2,
+  contacting: 3,
+  negotiating: 4,
+  comparing: 5,
+  awaiting_approval: 6,
+  approved: 7,
+  rejected: 7,
+  completed: 7
+};
+
+const nextActionByStatus = {
+  draft: { action: "start", label: "Start supplier discovery" },
+  discovering: { action: "discover", label: "Run supplier discovery" },
+  qualifying: { action: "qualify", label: "Run qualification" }
+};
+
+async function api(path, options = {}) {
   const response = await fetch(path, options);
-  const value = await response.json();
-  if (!response.ok) throw new Error(value.error || "Request failed");
+  let value;
+  try { value = await response.json(); } catch { value = {}; }
+  if (!response.ok) throw new Error(value.error || `Request failed (${response.status})`);
   return value;
 }
 
@@ -37,6 +57,13 @@ function toast(message) {
   setTimeout(() => element.classList.remove("show"), 2600);
 }
 
+function showWorkspaceError(message) {
+  const element = $("#workspace-error");
+  if (!element) return;
+  element.hidden = !message;
+  element.textContent = message || "";
+}
+
 function mission() {
   return data.missions.find(item => item.id === selectedMissionId) || data.missions[0];
 }
@@ -46,21 +73,31 @@ function componentFor(currentMission) {
 }
 
 function progressFor(status) {
-  if (status === "draft") return 0;
-  if (["completed", "approved"].includes(status)) return 7;
-  const index = stageOrder.indexOf(status);
-  return index < 0 ? 0 : index + 1;
+  return progressByStatus[status] ?? 0;
 }
 
 function qualificationClass(status) {
-  return status === "qualified" ? "low" : status === "rejected" ? "critical" : "high";
+  if (status === "qualified") return "low";
+  if (status === "rejected") return "critical";
+  if (status === "needs_review") return "high";
+  return "medium";
+}
+
+function providerLabel(currentMission) {
+  const provider = currentMission.execution?.discoveryProvider || data.capabilities?.discoveryProvider || "unconfigured";
+  if (provider === "remote") return { text: "Live discovery provider", className: "live" };
+  if (provider === "controlled-fixture") return { text: "Controlled demo fallback", className: "fixture" };
+  return { text: "Discovery provider not configured", className: "" };
 }
 
 function renderLanding() {
-  $("#landing-mission-count").textContent = `${data.summary.activeMissions} active mission`;
+  const active = data.summary.activeMissions;
+  $("#landing-mission-count").textContent = `${active} active mission${active === 1 ? "" : "s"}`;
   $("#landing-supplier-count").textContent = `${data.summary.suppliersDiscovered} suppliers discovered`;
   $("#landing-qualified-count").textContent = `${data.summary.suppliersQualified} qualified`;
   $("#landing-savings").textContent = `${money(data.summary.projectedSavings)} projected savings`;
+  const currentMission = mission();
+  $("#landing-build-state").textContent = `Current demo: ${stageNames[currentMission.status]}`;
 }
 
 function renderOverview() {
@@ -71,7 +108,8 @@ function renderOverview() {
   const best = [...qualified].sort((a, b) => b.projectedSavings - a.projectedSavings)[0];
 
   $("#organization-name").textContent = `${data.organization.name.toUpperCase()} / PROCUREMENT`;
-  $("#workspace-mode").lastChild.textContent = " Procurement foundation";
+  $("#workspace-mode").lastChild.textContent = ` ${stageNames[currentMission.status]}`;
+  $("#scenario-status").textContent = stageNames[currentMission.status];
   $("#overview-mission-title").textContent = currentMission.title;
   $("#overview-mission-objective").textContent = currentMission.objective;
   $("#mission-progress-value").textContent = progress;
@@ -93,34 +131,79 @@ function renderOverview() {
   $("#mission-current-price").textContent = money2(currentMission.currentSupplier.unitPrice);
   $("#mission-target-price").textContent = money2(currentMission.constraints.targetUnitPrice);
   $("#mission-max-lead").textContent = `${currentMission.constraints.maxLeadTimeDays} days`;
-  $("#mission-best-candidate").textContent = best ? best.name : "Still qualifying";
-  $("#mission-best-savings").textContent = best ? `${money(best.projectedSavings)} potential savings` : "No qualified offer yet";
+  $("#mission-best-candidate").textContent = best ? best.name : "No qualified candidate yet";
+  $("#mission-best-savings").textContent = best ? `${money(best.projectedSavings)} potential savings before shipping` : "Discovery and qualification must complete first.";
 
-  $("#trigger-component").textContent = component.name;
-  $("#trigger-risk").textContent = `${component.score}/100 supply risk`;
-  $("#trigger-summary").textContent = `${component.name} has ${number(component.inventory)} units observed, a ${component.leadTimeDays}-day lead time, and only ${component.supplierCount} current supplier. Vendor Scout is sourcing redundancy before that constraint becomes a production stop.`;
+  $("#trigger-component").textContent = component?.name || "Component unavailable";
+  $("#trigger-risk").textContent = component ? `${component.score}/100 supply risk` : "No risk signal";
+  $("#trigger-summary").textContent = component
+    ? `${component.name} has ${number(component.inventory)} units observed, a ${component.leadTimeDays}-day lead time, and only ${component.supplierCount} current supplier. Vendor Scout is sourcing redundancy before that constraint becomes a production stop.`
+    : "The mission component could not be resolved.";
   $("#trigger-target").textContent = `${number(currentMission.quantity)} units · target ≤ ${money2(currentMission.constraints.targetUnitPrice)} · lead ≤ ${currentMission.constraints.maxLeadTimeDays} days`;
 
-  $("#activity-timeline").innerHTML = [...data.activity].filter(item => item.missionId === currentMission.id).sort((a, b) => new Date(b.at) - new Date(a.at)).map(item => `<article class="event recovered"><span>${escapeHtml(item.stage)}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.detail)}</p><time>${escapeHtml(new Date(item.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }))}</time></article>`).join("");
+  const activity = [...data.activity].filter(item => item.missionId === currentMission.id).sort((a, b) => new Date(b.at) - new Date(a.at));
+  $("#activity-timeline").innerHTML = activity.length
+    ? activity.map(item => `<article class="event recovered"><span>${escapeHtml(item.stage)}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.detail)}</p><time>${escapeHtml(new Date(item.at).toLocaleString([], { hour: "numeric", minute: "2-digit", month: "short", day: "numeric" }))}</time></article>`).join("")
+    : '<div class="empty-state">No mission activity yet.</div>';
 }
 
 function renderMissions() {
+  const currentMission = mission();
   $("#mission-table-body").innerHTML = data.missions.map(item => `<tr><td><span>${escapeHtml(item.title)}</span><small>${escapeHtml(item.specification)}</small></td><td>${number(item.quantity)}</td><td>${money2(item.currentSupplier.unitPrice)} → target ${money2(item.constraints.targetUnitPrice)}</td><td>${item.currentSupplier.leadTimeDays}d → max ${item.constraints.maxLeadTimeDays}d</td><td><span class="availability in_stock">● ${escapeHtml(stageNames[item.status])}</span></td></tr>`).join("");
 
-  const currentMission = mission();
   const steps = ["Mission", "Discover", "Qualify", "Contact", "Negotiate", "Compare", "Approval"];
   const current = progressFor(currentMission.status);
-  $("#mission-lifecycle").innerHTML = steps.map((step, index) => `${index ? "<i>→</i>" : ""}<span>${index + 1 <= current ? "✓ " : ""}${escapeHtml(step)}</span>`).join("");
+  $("#mission-lifecycle").innerHTML = steps.map((step, index) => `${index ? "<i>→</i>" : ""}<span>${index < current ? "✓ " : ""}${escapeHtml(step)}</span>`).join("");
   $("#mission-requirements").innerHTML = currentMission.constraints.requirements.map(requirement => `<div class="factor"><span>Requirement</span><b>${escapeHtml(requirement)}</b></div>`).join("");
+  $("#mission-policy").innerHTML = [
+    ["Allowed regions", currentMission.constraints.regions.join(" · ")],
+    ["Minimum confidence", `${Math.round(currentMission.constraints.minimumConfidence * 100)}%`],
+    ["Sample budget", money2(currentMission.constraints.sampleBudget)],
+    ["Requested quantity", `${number(currentMission.quantity)} units`],
+    ["Target price", `≤ ${money2(currentMission.constraints.targetUnitPrice)} / unit`],
+    ["Lead-time ceiling", `≤ ${currentMission.constraints.maxLeadTimeDays} days`]
+  ].map(([label, value]) => `<article class="policy-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join("");
+
+  const provider = providerLabel(currentMission);
+  const providerElement = $("#execution-provider");
+  providerElement.textContent = provider.text;
+  providerElement.className = `provider-pill ${provider.className}`.trim();
+  $("#execution-status").textContent = currentMission.execution?.fallbackUsed
+    ? "This run used controlled fixture evidence. A configured provider will replace it without changing the mission contract."
+    : currentMission.execution?.discoveryProvider === "remote"
+      ? "This mission's discovery evidence came from the configured external provider."
+      : "The mission is ready to execute discovery through the configured provider or controlled local fallback.";
+
+  const localActions = Boolean(data.capabilities?.browserMutationsEnabled);
+  $("#execution-local-note").hidden = !localActions;
+  $("#mission-replay").hidden = !localActions || !data.capabilities?.devResetEnabled;
+  const next = nextActionByStatus[currentMission.status];
+  const nextButton = $("#mission-next-action");
+  nextButton.hidden = !localActions || !next;
+  nextButton.disabled = actionPending;
+  nextButton.textContent = actionPending ? "Running…" : next?.label || "No local action";
+  nextButton.dataset.action = next?.action || "";
 }
 
 function renderSuppliers() {
   const currentMission = mission();
   const candidates = data.supplierCandidates.filter(candidate => candidate.missionId === currentMission.id);
-  $("#supplier-view-count").textContent = `${candidates.length} candidates`;
-  $("#supplier-grid").innerHTML = candidates.map(candidate => `<article class="panel source-card"><header><div><h3>${escapeHtml(candidate.name)}</h3><code>${escapeHtml(candidate.type)}</code></div><span class="severity ${qualificationClass(candidate.status)}">${escapeHtml(candidate.status.replaceAll("_", " "))}</span></header><p class="source-region">${escapeHtml(candidate.country)} · ${escapeHtml(candidate.region)}</p><div class="source-stats"><span>Preliminary price<b>${money2(candidate.preliminaryUnitPrice)}</b></span><span>Lead time<b>${candidate.leadTimeDays} days</b></span><span>Confidence<b>${Math.round(candidate.confidence * 100)}%</b></span></div><p>${escapeHtml(candidate.reason)}</p></article>`).join("");
+  $("#supplier-view-count").textContent = `${candidates.length} candidate${candidates.length === 1 ? "" : "s"}`;
 
-  $("#supplier-table-body").innerHTML = candidates.map(candidate => `<tr><td><span>${escapeHtml(candidate.name)}</span><small>${escapeHtml(candidate.source.reference)}</small></td><td>${escapeHtml(candidate.type)}</td><td>${money2(candidate.preliminaryUnitPrice)}</td><td>${candidate.moq}</td><td>${candidate.leadTimeDays} days</td><td>${Math.round(candidate.specMatch * 100)}%</td><td><span class="availability ${candidate.status === "qualified" ? "in_stock" : "low_stock"}">● ${escapeHtml(candidate.status.replaceAll("_", " "))}</span></td></tr>`).join("");
+  if (!candidates.length) {
+    $("#supplier-grid").innerHTML = '<div class="empty-state">No suppliers have been discovered for this mission yet.</div>';
+    $("#supplier-table-body").innerHTML = "";
+    return;
+  }
+
+  $("#supplier-grid").innerHTML = candidates.map(candidate => {
+    const checkSummary = candidate.qualification
+      ? `${Object.values(candidate.qualification.checks).filter(Boolean).length}/${Object.keys(candidate.qualification.checks).length} checks passed`
+      : "Awaiting qualification";
+    return `<article class="panel source-card"><header><div><h3>${escapeHtml(candidate.name)}</h3><code>${escapeHtml(candidate.type)}</code></div><span class="severity ${qualificationClass(candidate.status)}">${escapeHtml(candidate.status.replaceAll("_", " "))}</span></header><p class="source-region">${escapeHtml(candidate.country)} · ${escapeHtml(candidate.region)}</p><div class="source-stats"><span>Preliminary price<b>${money2(candidate.preliminaryUnitPrice)}</b></span><span>Lead time<b>${candidate.leadTimeDays} days</b></span><span>Confidence<b>${Math.round(candidate.confidence * 100)}%</b></span></div><p>${escapeHtml(candidate.reason || "Discovered candidate; qualification has not run yet.")}</p><div class="supplier-proof"><span>${escapeHtml(candidate.source?.kind || "unknown source")}</span><span>${escapeHtml(candidate.source?.reference || "no reference")}</span><span>${escapeHtml(checkSummary)}</span></div></article>`;
+  }).join("");
+
+  $("#supplier-table-body").innerHTML = candidates.map(candidate => `<tr><td><span>${escapeHtml(candidate.name)}</span><small>${escapeHtml(candidate.source?.reference || "—")}</small></td><td>${escapeHtml(candidate.type)}</td><td>${money2(candidate.preliminaryUnitPrice)}</td><td>${candidate.moq}</td><td>${candidate.leadTimeDays} days</td><td>${Math.round(candidate.specMatch * 100)}%</td><td><span class="availability ${candidate.status === "qualified" ? "in_stock" : "low_stock"}">● ${escapeHtml(candidate.status.replaceAll("_", " "))}</span></td></tr>`).join("");
 }
 
 function renderConversations() {
@@ -128,18 +211,24 @@ function renderConversations() {
   const qualified = data.supplierCandidates.filter(candidate => candidate.missionId === currentMission.id && candidate.status === "qualified");
   $("#conversation-ready-count").textContent = qualified.length;
   $("#conversation-active-count").textContent = data.summary.negotiationsActive;
-  $("#rfq-targets").innerHTML = qualified.map(candidate => `<div class="factor"><span>${escapeHtml(candidate.name)}</span><b>${money2(candidate.preliminaryUnitPrice)} · ${candidate.leadTimeDays} days · MOQ ${candidate.moq}</b></div>`).join("");
+  $("#rfq-targets").innerHTML = qualified.length
+    ? qualified.map(candidate => `<div class="factor"><span>${escapeHtml(candidate.name)}</span><b>${money2(candidate.preliminaryUnitPrice)} · ${candidate.leadTimeDays} days · MOQ ${candidate.moq}</b></div>`).join("")
+    : '<div class="empty-state">No qualified supplier is ready for outreach yet.</div>';
 }
 
 function renderApprovals() {
   $("#approval-waiting").textContent = data.summary.approvalsWaiting;
   const currentMission = mission();
-  $("#approval-boundary").textContent = `Vendor Scout may discover, qualify, contact, negotiate, and compare within the ${escapeHtml(currentMission.title)} mission. It must stop before spending money, accepting commercial terms, or ordering samples.`;
+  $("#approval-boundary").textContent = `Vendor Scout may discover, qualify, contact, negotiate, and compare within the ${currentMission.title} mission. It must stop before spending money, accepting commercial terms, or ordering samples.`;
 }
 
 function render() {
-  if (!data?.missions?.length) return;
-  if (!selectedMissionId) selectedMissionId = data.missions[0].id;
+  if (!data?.missions?.length) {
+    showWorkspaceError("No sourcing missions are available.");
+    return;
+  }
+  showWorkspaceError("");
+  if (!selectedMissionId || !data.missions.some(item => item.id === selectedMissionId)) selectedMissionId = data.missions[0].id;
   renderLanding();
   renderOverview();
   renderMissions();
@@ -165,6 +254,50 @@ function navigate(view) {
   window.scrollTo(0, 0);
 }
 
+async function runMissionAction(action) {
+  if (!action || actionPending) return;
+  actionPending = true;
+  renderMissions();
+  try {
+    const result = await api(`/api/missions/${encodeURIComponent(mission().id)}/actions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action })
+    });
+    data = result.dashboard;
+    render();
+    toast(`${stageNames[mission().status]}`);
+  } catch (error) {
+    showWorkspaceError(error.message);
+    toast(error.message);
+  } finally {
+    actionPending = false;
+    renderMissions();
+  }
+}
+
+async function replayMission() {
+  if (actionPending) return;
+  actionPending = true;
+  renderMissions();
+  try {
+    data = await api("/api/dev/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stage: "draft" })
+    });
+    selectedMissionId = data.missions[0]?.id;
+    render();
+    toast("Mission reset to draft for replay");
+  } catch (error) {
+    showWorkspaceError(error.message);
+    toast(error.message);
+  } finally {
+    actionPending = false;
+    renderMissions();
+  }
+}
+
 function showApp(view = "overview") {
   $("#landing").hidden = true;
   $("#app-shell").hidden = false;
@@ -184,10 +317,15 @@ $$('.enter-app').forEach(element => { element.onclick = () => { history.pushStat
 $$('[data-open-view]').forEach(element => { element.onclick = () => { history.pushState(null, "", "#app"); showApp(element.dataset.openView); }; });
 $(".back-home").onclick = () => { history.pushState(null, "", "#home"); showLanding(); };
 $("#mobile-menu").onclick = () => { const open = $("#mobile-links").classList.toggle("open"); $("#mobile-menu").setAttribute("aria-expanded", open); };
+$("#mission-next-action").onclick = event => runMissionAction(event.currentTarget.dataset.action);
+$("#mission-replay").onclick = replayMission;
 window.addEventListener("hashchange", () => location.hash === "#app" ? showApp("overview") : location.hash === "#home" && showLanding());
 
 api("/api/dashboard").then(value => {
   data = value;
   render();
   if (location.hash === "#app") showApp("overview");
-}).catch(error => toast(error.message));
+}).catch(error => {
+  showWorkspaceError(error.message);
+  toast(error.message);
+});
