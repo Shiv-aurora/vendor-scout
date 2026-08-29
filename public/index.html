@@ -8,6 +8,7 @@
   <title>Vendor Scout — Autonomous hardware procurement</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23b9f45f'/%3E%3Ctext x='7' y='23' font-size='18' font-family='Arial' font-weight='700' fill='%2307100d'%3EVS%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/styles.css?v=vendor-scout-2">
+  <link rel="stylesheet" href="/procurement.css?v=vendor-scout-3">
 </head>
 <body>
   <div id="landing">
@@ -25,9 +26,9 @@
         <div class="hero-copy">
           <p class="kicker"><i></i> Autonomous hardware procurement</p>
           <h1>Find better suppliers. Negotiate automatically. Approve the best deal.</h1>
-          <p class="hero-deck">Vendor Scout continuously sources alternative hardware suppliers, qualifies them, runs the commercial conversation, compares the offers, and stops when a human decision actually matters.</p>
+          <p class="hero-deck">Vendor Scout turns one hardware need into a persistent sourcing mission: discover alternatives, qualify the evidence, run the commercial workflow, compare the offers, and stop when a human commitment is required.</p>
           <div class="hero-actions"><button class="button dark enter-app">Open Command Center</button><button class="button light" data-open-view="missions">View sourcing mission</button></div>
-          <div class="hero-status"><span><i class="green"></i> <b id="landing-mission-count">1 active mission</b></span><span id="landing-supplier-count">4 suppliers discovered</span><span id="landing-qualified-count">2 qualified</span><span id="landing-savings">$0 projected savings</span></div>
+          <div class="hero-status"><span><i class="green"></i> <b id="landing-mission-count">Loading mission</b></span><span id="landing-supplier-count">Loading suppliers</span><span id="landing-qualified-count">Loading qualification</span><span id="landing-savings">Loading economics</span></div>
         </div>
         <div class="globe-stage" aria-label="Global supplier discovery illustration"><div class="globe-halo"></div><img class="supply-globe" src="/assets/global-supply-globe.png" alt="Global supplier discovery network"><div class="globe-readout"><span>ATLAS ROBOTICS / LIDAR</span><b>500 production modules</b><small>Target ≤ $390 · lead time ≤ 21 days</small></div></div>
         <button class="scroll-cue" data-scroll="problem">See how it works</button>
@@ -35,16 +36,16 @@
 
       <section class="problem-section" id="problem">
         <div class="section-label"><i></i> The procurement problem</div>
-        <div class="problem-grid"><h2>Teams start looking for a backup supplier after the current one becomes a problem.</h2><div><p>Then someone spends days searching vendors, validating them, requesting quotes, chasing replies, normalizing terms, and negotiating.</p><p class="fragment-line">Vendor Scout keeps that work running before the supply chain breaks.</p><p>The agent handles the repetitive procurement loop. The human keeps control of the commitment.</p></div></div>
+        <div class="problem-grid"><h2>Teams usually look for a backup supplier after the current one becomes a problem.</h2><div><p>Then someone spends days finding vendors, validating technical fit, chasing quotes, normalizing terms, and negotiating.</p><p class="fragment-line">Vendor Scout keeps that procurement loop moving before the supply chain breaks.</p><p>The agent does the repetitive work. The human keeps control of the commitment.</p></div></div>
       </section>
 
       <section class="platform-section" id="platform">
         <div class="section-label"><i></i> Vendor Scout</div>
-        <div class="section-heading"><h2>A procurement agent that acts, not another supplier database.</h2></div>
+        <div class="section-heading"><h2>A procurement command center, not another supplier database.</h2></div>
         <div class="platform-grid">
-          <article><span>01</span><h3>Continuously discover</h3><p>Search for global alternatives against the component specification, quantity, region, price, lead-time, and supplier constraints.</p></article>
-          <article><span>02</span><h3>Qualify and negotiate</h3><p>Research the candidates, contact the strongest ones, collect commercial terms, and negotiate against the mission goal and competing offers.</p></article>
-          <article><span>03</span><h3>Bring back a decision</h3><p>Normalize the offers, explain the tradeoffs, recommend the strongest supplier, and stop before money or commercial commitment changes hands.</p></article>
+          <article><span>01</span><h3>Discover with constraints</h3><p>Search supplier candidates against component specification, quantity, allowed regions, confidence, price, lead time, and sample budget.</p></article>
+          <article><span>02</span><h3>Qualify with evidence</h3><p>Keep source provenance attached to every candidate and make Qualified, Needs review, or Rejected decisions from explicit checks.</p></article>
+          <article><span>03</span><h3>Escalate only the decision</h3><p>Outreach, negotiation, comparison, and approval stay in one mission so humans are needed only when judgment or commitment matters.</p></article>
         </div>
       </section>
 
@@ -52,37 +53,32 @@
         <div class="section-label"><i></i> One continuous mission</div>
         <div class="section-heading"><h2>Mission → Discover → Qualify → Contact → Negotiate → Compare → Approval</h2></div>
         <div class="stage-grid">
-          <article class="stage-card active"><span>01</span><h3>Source the market</h3><p>Vendor Scout turns one component need into a persistent sourcing mission and builds a candidate set instead of jumping to the first result.</p><div class="mini-map impact"><b>4 candidates discovered</b><small>Atlas LiDAR mission</small></div></article>
-          <article class="stage-card"><span>02</span><h3>Do the procurement work</h3><p>Qualification, outreach, supplier replies, negotiation, and quote extraction stay connected to the same mission and its constraints.</p><div class="mini-map recovered"><b>2 currently qualified</b><small>Commercial + technical screen</small></div></article>
-          <article class="stage-card"><span>03</span><h3>Stop at commitment</h3><p>When the best next step costs money or accepts terms, Vendor Scout presents the evidence and waits for a human.</p><div class="mini-map risk"><b>Human approval required</b><small>Before sample procurement</small></div></article>
+          <article class="stage-card active"><span>01</span><h3>Source the market</h3><p>The sourcing mission is persistent and executable. Discovery can run through a configured provider, with a controlled fallback for demo reliability.</p><div class="mini-map impact"><b>Evidence + provenance</b><small>Not a static supplier list</small></div></article>
+          <article class="stage-card"><span>02</span><h3>Screen the candidates</h3><p>Qualification evaluates region, confidence, technical match, lead time, MOQ, and commercial plausibility against the mission.</p><div class="mini-map recovered"><b>Explicit decisions</b><small>Qualified · review · rejected</small></div></article>
+          <article class="stage-card"><span>03</span><h3>Stop at commitment</h3><p>The later workflow will contact and negotiate with qualified suppliers, but spending money or accepting terms remains human-gated.</p><div class="mini-map risk"><b>Human approval required</b><small>Before sample procurement</small></div></article>
         </div>
       </section>
 
       <section class="live-section" id="approval">
-        <div class="live-copy"><div class="section-label"><i></i> Human-in-the-loop</div><h2>The agent earns the decision. It does not silently make it.</h2><p>The approval moment should show current supplier economics, negotiated economics, lead time, MOQ, shipping, risk, sample cost, competing offers, and Vendor Scout's recommendation.</p><button class="button dark" data-open-view="approvals">Open approval boundary</button></div>
-        <div class="live-catalog-card"><div class="catalog-card-head"><span>Decision packet</span><b>Before commitment</b></div><article><div><i></i><b>Current supplier</b><small>Northstar Components</small></div><strong>$429 / unit</strong><span>42 days</span></article><article><div><i></i><b>Mission target</b><small>500 LiDAR modules</small></div><strong>≤ $390 / unit</strong><span>≤ 21 days</span></article><footer><span>Actions</span><b>Approve · Keep negotiating · Reject</b></footer></div>
+        <div class="live-copy"><div class="section-label"><i></i> Human-in-the-loop</div><h2>The agent earns the decision. It does not silently make it.</h2><p>The approval packet is designed to show current versus proposed economics, lead time, MOQ, shipping, supplier risk, competing offers, sample terms, and the recommendation.</p><button class="button dark" data-open-view="approvals">Open approval boundary</button></div>
+        <div class="live-catalog-card"><div class="catalog-card-head"><span>Decision packet</span><b>Before commitment</b></div><article><div><i></i><b>Current supplier</b><small>Northstar Components</small></div><strong>$429 / unit</strong><span>42 days</span></article><article><div><i></i><b>Mission target</b><small>500 LiDAR modules</small></div><strong>≤ $390 / unit</strong><span>≤ 21 days</span></article><footer><span>Future actions</span><b>Approve · Keep negotiating · Reject</b></footer></div>
       </section>
 
       <section class="how-section" id="trueforge">
-        <div class="section-label"><i></i> TrueForge architecture</div>
-        <div class="section-heading"><h2>Built around a persistent agent session, not disconnected AI calls.</h2></div>
-        <div class="how-flow"><article><span>01</span><h3>Mission</h3><p>Store the procurement objective and hard constraints.</p></article><i>→</i><article><span>02</span><h3>Agent + tools</h3><p>Discover, investigate, contact, and continue the workflow through real tools.</p></article><i>→</i><article><span>03</span><h3>Analysis</h3><p>Normalize quotes and compute fair landed-cost comparisons in a sandbox.</p></article><i>→</i><article><span>04</span><h3>Approval</h3><p>Pause at the consequential action and resume only after the human decides.</p></article></div>
-      </section>
-
-      <section class="architecture-section">
-        <div class="architecture-copy"><div class="section-label"><i></i> Current build foundation</div><h2>The existing Vendor Scout shell is being reused instead of thrown away.</h2><p>The Node server, local persistence, hardware component context, responsive visual system, and Atlas Robotics scenario remain useful. The application model is being replaced with sourcing missions and procurement workflow state so TrueForge can become the orchestrator without rebuilding the product from zero.</p></div>
-        <div class="architecture-canvas"><img src="/assets/supply-network-field.png" alt="Abstract supplier network visualization"></div>
+        <div class="section-label"><i></i> Target TrueForge architecture</div>
+        <div class="section-heading"><h2>The current mission contract is ready for a persistent TrueForge session; TrueForge itself is the next orchestration integration.</h2></div>
+        <div class="how-flow"><article><span>01</span><h3>Mission</h3><p>Persist procurement objectives and hard constraints.</p></article><i>→</i><article><span>02</span><h3>Agent + tools</h3><p>Attach TrueForge to the existing discovery, qualification, outreach, and negotiation action boundary.</p></article><i>→</i><article><span>03</span><h3>Analysis</h3><p>Normalize quotes and compute fair landed-cost comparisons in a sandbox.</p></article><i>→</i><article><span>04</span><h3>Approval</h3><p>Pause at consequential actions and resume only after the human decides.</p></article></div>
       </section>
 
       <section class="preview-section">
-        <div class="preview-copy"><div class="section-label"><i></i> Procurement command center</div><h2>See what the agent is doing without reading a chat transcript.</h2><p>The workspace is organized around active missions, supplier qualification, conversations, quote evidence, and decisions waiting on a human.</p><button class="button light enter-app">Open Command Center</button></div>
-        <div class="product-window"><header><a class="mini-brand"><span>VS</span></a><strong>Atlas Robotics · LiDAR sourcing</strong><small>Qualification active</small></header><div class="window-grid"><article class="score-card"><span>Mission progress</span><strong>2<small>/7</small></strong><p>Discovery complete. Qualification in progress.</p></article><article class="stat-card"><span>Candidates</span><strong>4</strong><small>Global suppliers</small></article><article class="stat-card"><span>Qualified</span><strong>2</strong><small>Initial screen</small></article><article class="stat-card"><span>Target</span><strong>$390</strong><small>Per unit</small></article></div></div>
+        <div class="preview-copy"><div class="section-label"><i></i> Current executable build</div><h2>Discovery and qualification now run through the mission instead of being display-only fixture state.</h2><p id="landing-build-state">Loading current mission stage</p><button class="button light enter-app">Open Command Center</button></div>
+        <div class="product-window"><header><a class="mini-brand"><span>VS</span></a><strong>Atlas Robotics · LiDAR sourcing</strong><small>Persistent sourcing mission</small></header><div class="window-grid"><article class="score-card"><span>Mission</span><strong>500<small> units</small></strong><p>One procurement objective and one approval boundary.</p></article><article class="stat-card"><span>Target</span><strong>$390</strong><small>Per unit</small></article><article class="stat-card"><span>Lead time</span><strong>21d</strong><small>Maximum</small></article><article class="stat-card"><span>Sample budget</span><strong>$500</strong><small>Human-gated spend</small></article></div></div>
       </section>
 
       <section class="closing-section"><div><div class="section-label"><i></i> Vendor Scout</div><h2>Procurement keeps moving. Humans keep control.</h2><p>Find the vendor.<br>Negotiate the deal.<br>Approve the commitment.</p></div><button class="button dark enter-app">Open Vendor Scout</button></section>
     </main>
 
-    <footer class="site-footer"><a class="wordmark brand-text" href="#top" aria-label="Vendor Scout home"><i>VS</i><b>Vendor Scout</b></a><p>Autonomous supplier discovery and negotiation for hardware procurement.</p><div><b>Product</b><a href="#platform">Overview</a><a href="#workflow">Workflow</a><button class="enter-app">Command Center</button></div><div><b>Control</b><a href="#approval">Human Approval</a><a href="#trueforge">TrueForge</a><a href="/health">Runtime Status</a></div><div class="footer-status"><span><i></i> Procurement foundation active</span><small>© 2026 Vendor Scout</small></div></footer>
+    <footer class="site-footer"><a class="wordmark brand-text" href="#top" aria-label="Vendor Scout home"><i>VS</i><b>Vendor Scout</b></a><p>Autonomous supplier discovery and negotiation for hardware procurement.</p><div><b>Product</b><a href="#platform">Overview</a><a href="#workflow">Workflow</a><button class="enter-app">Command Center</button></div><div><b>Control</b><a href="#approval">Human Approval</a><a href="#trueforge">TrueForge target</a><a href="/health">Runtime Status</a></div><div class="footer-status"><span><i></i> Procurement workflow active</span><small>© 2026 Vendor Scout</small></div></footer>
   </div>
 
   <div id="app-shell" hidden>
@@ -100,13 +96,14 @@
 
     <main class="app-main">
       <header class="topbar"><div><p class="eyebrow" id="organization-name">ATLAS ROBOTICS / PROCUREMENT</p><h1 id="page-title">Overview</h1></div><div class="top-actions"><span class="data-pill" id="workspace-mode"><i></i> Loading workspace</span><button class="back-home">Back to site</button><button class="avatar">VS</button></div></header>
+      <div class="error-state" id="workspace-error" hidden></div>
 
       <section class="view active" id="view-overview">
-        <article class="scenario-panel"><div><span>PRIMARY SOURCING MISSION</span><strong id="overview-mission-title">Source 500 production LiDAR modules</strong><p id="overview-mission-objective">Find a qualified alternative supplier with better economics and lead time.</p></div><b><i></i> The agent is currently qualifying discovered suppliers.</b></article>
+        <article class="scenario-panel"><div><span>PRIMARY SOURCING MISSION</span><strong id="overview-mission-title">Source 500 production LiDAR modules</strong><p id="overview-mission-objective">Loading mission objective.</p></div><b><i></i> <span id="scenario-status">Loading mission</span></b></article>
 
         <div class="hero-grid">
-          <article class="readiness panel"><div class="panel-head"><div><p class="eyebrow">AUTONOMOUS MISSION PROGRESS</p><h2>Atlas Robotics supplier search</h2></div><span class="asof">Persistent mission</span></div><div class="readiness-body"><div class="score-ring" id="mission-progress-ring"><strong id="mission-progress-value">—</strong><small>/7</small></div><div class="readiness-copy"><span class="status-line"><i></i> Active sourcing work</span><h3 id="mission-progress-label">Loading mission</h3><p>Vendor Scout keeps the procurement loop moving until a consequential action needs human approval.</p></div></div></article>
-          <article class="panel metrics-panel"><div class="metric"><span>Active missions</span><strong id="active-mission-count">—</strong><small>Persistent objectives</small></div><div class="metric"><span>Qualified suppliers</span><strong id="qualified-count">—</strong><small>Ready for outreach</small></div><div class="metric"><span>Best projected savings</span><strong id="projected-savings">—</strong><small>Preliminary economics</small></div><div class="metric"><span>Approvals waiting</span><strong id="approval-count">—</strong><small>Human decisions</small></div></article>
+          <article class="readiness panel"><div class="panel-head"><div><p class="eyebrow">MISSION PROGRESS</p><h2>Atlas Robotics supplier search</h2></div><span class="asof">Persistent mission</span></div><div class="readiness-body"><div class="score-ring" id="mission-progress-ring"><strong id="mission-progress-value">—</strong><small>/7</small></div><div class="readiness-copy"><span class="status-line"><i></i> Active sourcing work</span><h3 id="mission-progress-label">Loading mission</h3><p>The state is persisted on the server and moves only through validated mission actions.</p></div></div></article>
+          <article class="panel metrics-panel"><div class="metric"><span>Active missions</span><strong id="active-mission-count">—</strong><small>Persistent objectives</small></div><div class="metric"><span>Qualified suppliers</span><strong id="qualified-count">—</strong><small>Ready for outreach</small></div><div class="metric"><span>Best projected savings</span><strong id="projected-savings">—</strong><small>Before shipping</small></div><div class="metric"><span>Approvals waiting</span><strong id="approval-count">—</strong><small>Human decisions</small></div></article>
         </div>
 
         <div class="section-title"><div><p class="eyebrow">WHAT VENDOR SCOUT IS WORKING ON</p><h2>Active sourcing mission</h2></div></div>
@@ -118,21 +115,25 @@
       </section>
 
       <section class="view" id="view-missions">
-        <div class="view-intro"><div><p class="eyebrow">PERSISTENT PROCUREMENT OBJECTIVES</p><h2>Sourcing Missions</h2><p>Each mission carries the component requirements, commercial constraints, workflow state, evidence, conversations, quotes, and approval boundary.</p></div><span class="local-badge">1 active mission</span></div>
+        <div class="view-intro"><div><p class="eyebrow">PERSISTENT PROCUREMENT OBJECTIVES</p><h2>Sourcing Missions</h2><p>Each mission carries component requirements, commercial constraints, workflow state, evidence, conversations, quotes, and the approval boundary.</p></div><span class="local-badge">Atlas Robotics</span></div>
         <article class="panel catalog-panel"><div class="panel-head"><div><p class="eyebrow">MISSION PORTFOLIO</p><h2>Current sourcing work</h2></div></div><div class="catalog-table-wrap"><table class="catalog-table"><thead><tr><th>Mission</th><th>Quantity</th><th>Price objective</th><th>Lead-time objective</th><th>Status</th></tr></thead><tbody id="mission-table-body"></tbody></table></div></article>
-        <article class="panel impact-panel"><div class="impact-copy"><p class="eyebrow">MISSION LIFECYCLE</p><h2>One connected workflow from need to decision.</h2><p>The mission persists as Vendor Scout discovers suppliers, qualifies them, contacts them, negotiates, compares offers, and reaches the approval boundary.</p></div><div class="impact-path" id="mission-lifecycle"></div></article>
-        <div class="section-title"><div><p class="eyebrow">TECHNICAL FIT</p><h2>Requirements carried through the mission</h2></div></div><div class="risk-factors" id="mission-requirements"></div>
+        <article class="panel impact-panel"><div class="impact-copy"><p class="eyebrow">MISSION LIFECYCLE</p><h2>One connected workflow from need to decision.</h2><p>Mission transitions are validated and persisted server-side before the workflow advances.</p></div><div class="impact-path" id="mission-lifecycle"></div></article>
+
+        <div class="section-title"><div><p class="eyebrow">MISSION POLICY</p><h2>Every sourcing constraint carried by the mission</h2></div></div><div class="mission-policy-grid" id="mission-policy"></div>
+        <div class="section-title"><div><p class="eyebrow">TECHNICAL FIT</p><h2>Requirements carried through discovery and qualification</h2></div></div><div class="risk-factors" id="mission-requirements"></div>
+
+        <article class="panel execution-panel"><div><div id="execution-provider" class="provider-pill">Loading provider</div><h3>Executable sourcing flow</h3><p id="execution-status">Loading execution state.</p><p id="execution-local-note" hidden>Local development mode can replay Mission → Discover → Qualify from the command center. Production mutation endpoints require the configured agent token.</p></div><div class="execution-actions"><button class="button light" id="mission-replay" hidden>Replay from draft</button><button class="primary-button" id="mission-next-action" hidden>Run next step</button></div></article>
       </section>
 
       <section class="view" id="view-suppliers">
-        <div class="view-intro"><div><p class="eyebrow">DISCOVER → QUALIFY</p><h2>Supplier Candidates</h2><p>Vendor Scout should build a candidate set, preserve provenance, and explain why each supplier is qualified, rejected, or still needs review.</p></div><span class="local-badge" id="supplier-view-count">—</span></div>
+        <div class="view-intro"><div><p class="eyebrow">DISCOVER → QUALIFY</p><h2>Supplier Candidates</h2><p>Every candidate keeps its discovery provenance and qualification evidence so acceptance or rejection can be explained.</p></div><span class="local-badge" id="supplier-view-count">—</span></div>
         <div class="source-grid" id="supplier-grid"></div>
-        <article class="panel catalog-panel"><div class="panel-head"><div><p class="eyebrow">COMMERCIAL SCREEN</p><h2>Candidate comparison</h2></div></div><div class="catalog-table-wrap"><table class="catalog-table"><thead><tr><th>Supplier</th><th>Type</th><th>Preliminary price</th><th>MOQ</th><th>Lead time</th><th>Spec match</th><th>Decision</th></tr></thead><tbody id="supplier-table-body"></tbody></table></div></article>
+        <article class="panel catalog-panel"><div class="panel-head"><div><p class="eyebrow">COMMERCIAL + TECHNICAL SCREEN</p><h2>Candidate comparison</h2></div></div><div class="catalog-table-wrap"><table class="catalog-table"><thead><tr><th>Supplier</th><th>Type</th><th>Preliminary price</th><th>MOQ</th><th>Lead time</th><th>Spec match</th><th>Decision</th></tr></thead><tbody id="supplier-table-body"></tbody></table></div></article>
       </section>
 
       <section class="view" id="view-conversations">
-        <div class="view-intro"><div><p class="eyebrow">QUALIFY → CONTACT → NEGOTIATE</p><h2>Conversations</h2><p>Supplier outreach is the next implementation stage. Qualified candidates will become persistent RFQ and negotiation threads here rather than one-off generated emails.</p></div><span class="local-badge"><span id="conversation-active-count">0</span> active negotiations</span></div>
-        <article class="panel contract-panel"><div><p class="eyebrow">READY FOR OUTREACH</p><h2><span id="conversation-ready-count">—</span> qualified suppliers can enter RFQ.</h2><p>The RFQ will request unit price, quantity tiers, MOQ, inventory, lead time, shipping terms, sample availability, sample pricing, certifications, and missing technical confirmation.</p></div><pre>RFQ → supplier reply → term extraction
+        <div class="view-intro"><div><p class="eyebrow">QUALIFY → CONTACT → NEGOTIATE</p><h2>Conversations</h2><p>Outreach is the next integration milestone. Qualified suppliers will become persistent RFQ and negotiation threads here instead of one-off generated messages.</p></div><span class="local-badge"><span id="conversation-active-count">0</span> active negotiations</span></div>
+        <article class="panel contract-panel"><div><p class="eyebrow">READY FOR OUTREACH</p><h2><span id="conversation-ready-count">—</span> qualified suppliers can enter RFQ.</h2><p>The RFQ contract will request unit price, quantity tiers, MOQ, inventory, lead time, shipping terms, sample availability, sample pricing, certifications, and missing technical confirmation.</p></div><pre>RFQ → supplier reply → term extraction
 → constraint check → counter / clarify
 → negotiated quote</pre></article>
         <div class="section-title"><div><p class="eyebrow">OUTREACH TARGETS</p><h2>Qualified suppliers</h2></div></div><div class="risk-factors" id="rfq-targets"></div>
@@ -141,7 +142,7 @@
       <section class="view" id="view-approvals">
         <div class="recovery-hero"><div><p class="eyebrow">HUMAN APPROVAL BOUNDARY</p><h2>The agent does the work.<br><em>The human commits.</em></h2><p id="approval-boundary">Vendor Scout stops before a consequential procurement action.</p></div><span class="verified-badge"><i></i> <span id="approval-waiting">0</span> waiting</span></div>
         <article class="panel recovery-proof"><div class="proof-head"><div><p class="eyebrow">NON-NEGOTIABLE CONTROL</p><h2>No silent purchase or commercial commitment.</h2></div><span>HUMAN REQUIRED</span></div><div class="proof-grid"><div><small>Agent may</small><strong>Research + negotiate</strong><span>Within mission constraints</span></div><div><small>Agent must stop before</small><strong>Spending money</strong><span>Or accepting terms</span></div><div><small>Human actions</small><strong>Approve / Negotiate / Reject</strong><span>Evidence included</span></div></div></article>
-        <div class="recovery-section-title"><p class="eyebrow">DECISION PACKET</p><h2>What a future approval will contain</h2></div><article class="panel contract-panel"><div><h2>Enough evidence for a fast decision.</h2><p>Recommended supplier, negotiated price, current price, expected savings, lead time, MOQ, shipping and landed cost, qualification summary, important risks, competing offers, sample terms, and Vendor Scout's recommendation.</p></div><pre>Approve sample
+        <div class="recovery-section-title"><p class="eyebrow">DECISION PACKET</p><h2>What the approval stage will contain</h2></div><article class="panel contract-panel"><div><h2>Enough evidence for a fast decision.</h2><p>Recommended supplier, negotiated price, current price, expected savings, lead time, MOQ, shipping and landed cost, qualification summary, important risks, competing offers, sample terms, and Vendor Scout's recommendation.</p></div><pre>Approve sample
 Keep negotiating
 Reject</pre></article>
       </section>
@@ -149,6 +150,6 @@ Reject</pre></article>
     <div class="toast" id="toast" role="status"></div>
   </div>
 
-  <script type="module" src="/app.js?v=vendor-scout-2"></script>
+  <script type="module" src="/app.js?v=vendor-scout-3"></script>
 </body>
 </html>
