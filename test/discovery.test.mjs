@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { discoverFixtureSuppliers, discoverSuppliers } from "../lib/discovery.mjs";
+import { discoverFixtureSuppliers, discoverSuppliers, normalizeDiscoveredCandidates } from "../lib/discovery.mjs";
 import { qualifySupplier, validateMission } from "../lib/domain.mjs";
 import { createSeed } from "../lib/seed.mjs";
 
@@ -42,6 +42,51 @@ test("discovery adapter uses controlled fallback only when allowed", async () =>
     discoverSuppliers(mission, { url: null, allowFixtureFallback: false }),
     /not configured/
   );
+});
+
+test("live research can preserve unknown commercial fields without inventing zero values", () => {
+  const mission = createSeed({ missionStage: "draft" }).missions[0];
+  const input = [{
+    name: "Example Photonics",
+    country: "United States",
+    region: "North America",
+    type: "Manufacturer",
+    website: "https://example.com/lidar",
+    confidence: .87,
+    specMatch: .93,
+    preliminaryUnitPrice: null,
+    moq: null,
+    leadTimeDays: null,
+    availability: "Contact supplier",
+    sourceReference: "https://example.com/lidar"
+  }];
+
+  const first = normalizeDiscoveredCandidates(mission, input, "trueforge-research")[0];
+  const second = normalizeDiscoveredCandidates(mission, input, "trueforge-research")[0];
+  assert.equal(first.id, second.id);
+  assert.equal(first.source.kind, "trueforge-research");
+  assert.equal(first.source.reference, "https://example.com/lidar");
+  assert.equal(first.preliminaryUnitPrice, null);
+  assert.equal(first.moq, null);
+  assert.equal(first.leadTimeDays, null);
+
+  const evaluated = qualifySupplier(mission, first, "2026-08-29T12:00:00.000Z");
+  assert.equal(evaluated.status, "needs_review");
+  assert.match(evaluated.reason, /unit price is not yet available/);
+  assert.match(evaluated.reason, /lead time is not yet verified/);
+  assert.match(evaluated.reason, /MOQ is not yet verified/);
+});
+
+test("live research rejects candidates without provenance", () => {
+  const mission = createSeed({ missionStage: "draft" }).missions[0];
+  assert.throws(() => normalizeDiscoveredCandidates(mission, [{
+    name: "Unverifiable Supplier",
+    country: "United States",
+    region: "North America",
+    type: "Distributor",
+    confidence: .8,
+    specMatch: .9
+  }], "trueforge-research"), /source provenance/);
 });
 
 test("qualification applies mission constraints and produces explainable decisions", () => {
