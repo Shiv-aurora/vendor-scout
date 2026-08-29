@@ -62,8 +62,8 @@ async function mcp(baseUrl, id, method, params = {}, headers = {}) {
   return body;
 }
 
-test("MCP tools execute the persisted Mission → Discover → Qualify workflow", async t => {
-  const directory = await mkdtemp(join(tmpdir(), "vendor-scout-mcp-"));
+async function createDevelopmentRuntime(t, prefix) {
+  const directory = await mkdtemp(join(tmpdir(), prefix));
   const port = await freePort();
   const runtime = await startServer({
     ...process.env,
@@ -75,6 +75,11 @@ test("MCP tools execute the persisted Mission → Discover → Qualify workflow"
     TRUEFORGE_BASE_URL: ""
   });
   t.after(() => stop(runtime.child));
+  return runtime;
+}
+
+test("MCP tools execute the persisted Mission → Discover → Qualify workflow", async t => {
+  const runtime = await createDevelopmentRuntime(t, "vendor-scout-mcp-");
 
   let response = await postJson(`${runtime.baseUrl}/api/dev/reset`, { stage: "draft" });
   assert.equal(response.status, 200);
@@ -88,12 +93,15 @@ test("MCP tools execute the persisted Mission → Discover → Qualify workflow"
   assert.equal(response.status, 202);
 
   rpc = await mcp(runtime.baseUrl, 2, "tools/list");
-  assert.equal(rpc.result.tools.length, 3);
+  assert.equal(rpc.result.tools.length, 4);
   const readTool = rpc.result.tools.find(tool => tool.name === "vendor_scout_get_mission");
   const discoverTool = rpc.result.tools.find(tool => tool.name === "vendor_scout_discover_suppliers");
+  const recordTool = rpc.result.tools.find(tool => tool.name === "vendor_scout_record_supplier_candidates");
   assert.equal(readTool.annotations.readOnlyHint, true);
   assert.equal(discoverTool.annotations.openWorldHint, true);
   assert.equal(discoverTool.annotations.destructiveHint, false);
+  assert.equal(recordTool.annotations.openWorldHint, false);
+  assert.equal(recordTool.inputSchema.properties.candidates.maxItems, 50);
 
   rpc = await mcp(runtime.baseUrl, 3, "tools/call", { name: "vendor_scout_get_mission", arguments: { missionId: "mission-lidar-500" } });
   assert.equal(rpc.result.structuredContent.mission.status, "draft");
@@ -113,6 +121,57 @@ test("MCP tools execute the persisted Mission → Discover → Qualify workflow"
 
   rpc = await mcp(runtime.baseUrl, 6, "tools/call", { name: "vendor_scout_qualify_suppliers", arguments: { missionId: "mission-lidar-500" } });
   assert.equal(rpc.result.structuredContent.mission.status, "contacting");
+});
+
+test("MCP records provenance-backed TrueForge research without inventing missing commercial fields", async t => {
+  const runtime = await createDevelopmentRuntime(t, "vendor-scout-mcp-live-");
+  let response = await postJson(`${runtime.baseUrl}/api/dev/reset`, { stage: "draft" });
+  assert.equal(response.status, 200);
+
+  const liveCandidate = {
+    name: "Evidence Lidar Inc",
+    country: "United States",
+    region: "North America",
+    type: "Manufacturer",
+    website: "https://evidence.example/lidar",
+    confidence: .9,
+    specMatch: .94,
+    preliminaryUnitPrice: null,
+    moq: null,
+    leadTimeDays: null,
+    availability: "Contact supplier",
+    sourceReference: "https://evidence.example/lidar"
+  };
+
+  let rpc = await mcp(runtime.baseUrl, 10, "tools/call", {
+    name: "vendor_scout_record_supplier_candidates",
+    arguments: { missionId: "mission-lidar-500", candidates: [liveCandidate] }
+  });
+  assert.equal(rpc.result.isError, false);
+  assert.equal(rpc.result.structuredContent.mission.status, "qualifying");
+  assert.equal(rpc.result.structuredContent.mission.execution.discoveryProvider, "trueforge-tools");
+  assert.equal(rpc.result.structuredContent.mission.execution.fallbackUsed, false);
+  assert.equal(rpc.result.structuredContent.suppliers.length, 1);
+  assert.equal(rpc.result.structuredContent.suppliers[0].source.kind, "trueforge-research");
+  assert.equal(rpc.result.structuredContent.suppliers[0].source.reference, liveCandidate.sourceReference);
+  assert.equal(rpc.result.structuredContent.suppliers[0].preliminaryUnitPrice, null);
+
+  const firstId = rpc.result.structuredContent.suppliers[0].id;
+  rpc = await mcp(runtime.baseUrl, 11, "tools/call", {
+    name: "vendor_scout_record_supplier_candidates",
+    arguments: { missionId: "mission-lidar-500", candidates: [liveCandidate] }
+  });
+  assert.equal(rpc.result.structuredContent.suppliers.length, 1);
+  assert.equal(rpc.result.structuredContent.suppliers[0].id, firstId);
+
+  rpc = await mcp(runtime.baseUrl, 12, "tools/call", { name: "vendor_scout_qualify_suppliers", arguments: { missionId: "mission-lidar-500" } });
+  assert.equal(rpc.result.structuredContent.mission.status, "contacting");
+  assert.equal(rpc.result.structuredContent.suppliers[0].status, "needs_review");
+  assert.match(rpc.result.structuredContent.suppliers[0].reason, /unit price is not yet available/);
+
+  response = await fetch(`${runtime.baseUrl}/api/dashboard`);
+  const dashboard = await response.json();
+  assert.ok(dashboard.activity.some(item => item.title === "1 researched supplier candidate recorded"));
 });
 
 test("production MCP endpoint is closed without a configured bearer token", async t => {
