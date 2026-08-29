@@ -1,7 +1,7 @@
 # Status
 
 Current phase: Phase 1 complete / Phase 2 complete / Phases 3–4 implemented / Phase 5 integration foundation implemented
-Current objective: Validate the completed sourcing foundation through the required review path, then configure a live TrueForge runtime and move into supplier outreach.
+Current objective: Complete the required PR/Qodo review, then validate the TrueForge integration against a real configured runtime and move into supplier outreach.
 
 Completed:
 - Preserved the existing Node 20 / vanilla frontend product shell while reframing Vendor Scout around autonomous procurement.
@@ -20,18 +20,20 @@ Completed:
 - Updated the TrueForge agent prompt so live research is persisted through MCP and consequential commitments remain explicitly human-gated.
 - Added `docs/TRUEFORGE.md` with runtime topology, MCP connector configuration, agent setup, approval requirements, and production notes.
 - Corrected product copy so unconfigured TrueForge is never presented as already live; the command center shows unconfigured / configured / connected session state from actual runtime data.
-- Fixed the four-card Overview layout, mobile five-item navigation, unknown-value rendering, supplier provenance display, and empty/error states.
 - Added desktop and mobile Chromium validation to CI and preserved screenshots/DOM as workflow artifacts.
+- Inspected the generated browser screenshots and corrected visual regressions that DOM smoke tests did not catch: missing progress value, stretched single-mission card, and clipped five-item mobile navigation.
+- The final command-center screenshots show the progress value, compact mission card, intentional four-metric desktop layout, and all five mobile navigation items without clipping.
 
 Last verified:
-- GitHub Actions run `33280301777` on branch `build/trueforge-orchestration` completed successfully at commit `f3d78ab95ef5c2e0923dd492422ad00f7d2b927e`.
+- GitHub Actions run `33280458844` on branch `build/trueforge-orchestration` completed successfully at commit `08e29f87f15644d7c3d6781a47d6c56407c865be`.
 - `npm run check` passed on Node 20.20.2 with 29/29 tests and no failures.
 - Full-process runtime tests passed for persisted Mission → Discover → Qualify execution and restart persistence.
 - Production-mode tests passed for default-deny mutation, MCP, fixture-fallback, and development-reset boundaries.
 - Migration tests passed, including preservation of existing mission/supplier data and fail-closed behavior for unknown state versions.
 - Mock TrueForge integration passed end-to-end: create persistent session → start turn → sync completed turn → persist bounded agent output/activity.
 - MCP integration passed initialize / tools/list / tools/call over HTTP, including provenance-backed live supplier ingestion, idempotent retries, qualification, and production authentication denial.
-- Headless Chrome rendered the command center successfully at 1440×1100 and 390×844; browser evidence artifact `9722781835` contains desktop/mobile screenshots and rendered DOM.
+- Headless Chrome rendered the command center successfully at 1440×1100 and 390×844.
+- Final browser evidence artifact `9722827001` contains the inspected desktop/mobile screenshots and rendered DOM.
 
 External validation still required:
 - An actual TrueForge runtime, saved `vendor-scout` agent, and configured Vendor Scout MCP connector are not available in the current connected environment, so a real external TrueForge session has not yet been executed against live supplier research.
