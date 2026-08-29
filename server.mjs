@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createSeed } from "./lib/seed.mjs";
-import { transitionSource } from "./lib/domain.mjs";
 import { createDemoStore } from "./lib/store.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
@@ -12,6 +11,11 @@ const port = Number(process.env.PORT || 3000);
 const store = await createDemoStore(createSeed());
 let state = await store.snapshot();
 const mutationHits = new Map();
+
+if (state.meta?.contractVersion !== "2.0.0") {
+  state = createSeed();
+  await store.write(state);
+}
 
 const securityHeaders = Object.freeze({
   "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
@@ -40,13 +44,50 @@ const allowMutation = req => {
   mutationHits.set(key, recent);
   return true;
 };
+
 function dashboard() {
-  const critical = state.components.filter(component => component.severity === "critical").length;
-  const degraded = state.sources.filter(source => ["degraded", "healing"].includes(source.state)).length;
-  const healthy = state.sources.filter(source => ["healthy", "recovered"].includes(source.state)).length;
-  return { ...state, meta: { ...state.meta, persistence: store.kind }, summary: { readiness: Math.max(0, 94 - critical * 18 - degraded * 12), critical, components: state.components.length, sourcesHealthy: healthy } };
+  const activeMissions = state.missions.filter(mission => !["completed", "rejected"].includes(mission.status));
+  const qualified = state.supplierCandidates.filter(candidate => candidate.status === "qualified");
+  const negotiationsActive = state.conversations.filter(conversation => conversation.status === "negotiating").length;
+  const approvalsWaiting = state.approvals.filter(approval => approval.status === "pending").length;
+  const projectedSavings = Math.max(0, ...qualified.map(candidate => candidate.projectedSavings || 0));
+
+  return {
+    ...state,
+    meta: { ...state.meta, persistence: store.kind },
+    summary: {
+      activeMissions: activeMissions.length,
+      suppliersDiscovered: state.supplierCandidates.length,
+      suppliersQualified: qualified.length,
+      suppliersContacted: new Set(state.conversations.map(conversation => conversation.supplierId)).size,
+      negotiationsActive,
+      quotesReceived: state.quotes.length,
+      approvalsWaiting,
+      projectedSavings
+    }
+  };
 }
-async function persist() { await store.write(state); return dashboard(); }
+
+function missionSnapshot(id) {
+  const mission = state.missions.find(item => item.id === id);
+  if (!mission) return null;
+  const forMission = items => items.filter(item => item.missionId === id);
+  return {
+    mission,
+    component: state.components.find(item => item.id === mission.componentId) || null,
+    suppliers: forMission(state.supplierCandidates),
+    conversations: forMission(state.conversations),
+    quotes: forMission(state.quotes),
+    recommendations: forMission(state.recommendations),
+    approvals: forMission(state.approvals),
+    activity: forMission(state.activity)
+  };
+}
+
+async function persist() {
+  await store.write(state);
+  return dashboard();
+}
 
 export async function handleRequest(req, res) {
   try {
@@ -54,34 +95,22 @@ export async function handleRequest(req, res) {
     const url = new URL(req.url, "http://localhost");
     if (url.pathname.startsWith("/api/") && !["GET", "HEAD", "OPTIONS"].includes(req.method) && !isSameOriginRequest(req)) return json(res, 403, { error: "Cross-origin mutation denied" });
     if (url.pathname.startsWith("/api/") && !["GET", "HEAD", "OPTIONS"].includes(req.method) && !allowMutation(req)) { res.setHeader("Retry-After", "60"); return json(res, 429, { error: "Too many mutation requests" }); }
-    if (url.pathname === "/health") return json(res, 200, { status: "ok", service: "vendor-scout", mode: "local-demo", persistence: store.kind, now: new Date().toISOString() });
+
+    if (url.pathname === "/health") return json(res, 200, { status: "ok", service: "vendor-scout", mode: state.meta.mode, persistence: store.kind, now: new Date().toISOString() });
     if (url.pathname === "/api/dashboard" && req.method === "GET") return json(res, 200, dashboard());
-    if (url.pathname.startsWith("/api/components/") && req.method === "GET") {
+
+    if (url.pathname.startsWith("/api/missions/") && req.method === "GET") {
       const id = decodeURIComponent(url.pathname.split("/").pop());
-      const component = state.components.find(item => item.id === id);
-      if (!component) return json(res, 404, { error: "Component not found" });
-      return json(res, 200, { component, trend: state.trends[id] || [], observations: state.observations.filter(item => item.componentId === id), alternatives: state.alternatives.filter(item => item.componentId === id) });
+      const snapshot = missionSnapshot(id);
+      if (!snapshot) return json(res, 404, { error: "Sourcing mission not found" });
+      return json(res, 200, snapshot);
     }
-    if (url.pathname === "/api/demo/reset" && req.method === "POST") { state = createSeed(); return json(res, 200, await persist()); }
-    if (url.pathname === "/api/demo/degrade" && req.method === "POST") {
-      const source = state.sources.find(item => item.id === "src-controlled");
-      source.state = transitionSource("healthy", "invalid"); source.rows = 0; source.freshness = "now";
-      state.qualityEvents = [{ at: new Date().toISOString(), sourceId: source.id, state: "degraded", title: "Sample validation failed", detail: "Required inventory and part-number fields were removed from the local fixture." }];
+
+    if (url.pathname === "/api/dev/reset" && req.method === "POST") {
+      state = createSeed();
       return json(res, 200, await persist());
     }
-    if (url.pathname === "/api/demo/heal" && req.method === "POST") {
-      const source = state.sources.find(item => item.id === "src-controlled");
-      if (source.state !== "degraded") return json(res, 409, { error: "The sample must be degraded before correction" });
-      source.state = transitionSource(source.state, "heal"); state.qualityEvents.push({ at: new Date().toISOString(), sourceId: source.id, state: "healing", title: "Local fixture corrected", detail: "The deterministic sample record was corrected locally." });
-      return json(res, 202, await persist());
-    }
-    if (url.pathname === "/api/demo/verify" && req.method === "POST") {
-      const source = state.sources.find(item => item.id === "src-controlled");
-      if (source.state !== "healing") return json(res, 409, { error: "The sample must be corrected before verification" });
-      source.state = transitionSource(source.state, "verified"); source.rows = 8; source.freshness = "now";
-      state.qualityEvents.push({ at: new Date().toISOString(), sourceId: source.id, state: "recovered", title: "Sample verified", detail: "8 local records passed the demo data contract." });
-      return json(res, 200, await persist());
-    }
+
     if (req.method !== "GET" && req.method !== "HEAD") return json(res, 404, { error: "Not found" });
     const relative = url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname.slice(1));
     const file = resolve(publicRoot, relative);
@@ -93,6 +122,7 @@ export async function handleRequest(req, res) {
     res.end(content);
   } catch (error) {
     if (error.code === "ENOENT") return json(res, 404, { error: "Not found" });
+    console.error(error);
     json(res, 500, { error: "Internal server error" });
   }
 }
