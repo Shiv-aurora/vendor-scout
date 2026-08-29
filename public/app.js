@@ -5,9 +5,10 @@ let actionPending = false;
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
-const number = value => new Intl.NumberFormat("en-US").format(value ?? 0);
-const money = value => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value ?? 0);
-const money2 = value => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(value ?? 0);
+const number = value => Number.isFinite(value) ? new Intl.NumberFormat("en-US").format(value) : "—";
+const money = value => Number.isFinite(value) ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value) : "—";
+const money2 = value => Number.isFinite(value) ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(value) : "—";
+const days = value => Number.isFinite(value) ? `${number(value)} days` : "—";
 
 const stageNames = {
   draft: "Mission ready",
@@ -85,6 +86,7 @@ function qualificationClass(status) {
 
 function providerLabel(currentMission) {
   const provider = currentMission.execution?.discoveryProvider || data.capabilities?.discoveryProvider || "unconfigured";
+  if (provider === "trueforge-tools") return { text: "TrueForge live research", className: "live" };
   if (provider === "remote") return { text: "Live discovery provider", className: "live" };
   if (provider === "controlled-fixture") return { text: "Controlled demo fallback", className: "fixture" };
   return { text: "Discovery provider not configured", className: "" };
@@ -130,7 +132,7 @@ function renderOverview() {
   $("#mission-current-supplier").textContent = currentMission.currentSupplier.name;
   $("#mission-current-price").textContent = money2(currentMission.currentSupplier.unitPrice);
   $("#mission-target-price").textContent = money2(currentMission.constraints.targetUnitPrice);
-  $("#mission-max-lead").textContent = `${currentMission.constraints.maxLeadTimeDays} days`;
+  $("#mission-max-lead").textContent = days(currentMission.constraints.maxLeadTimeDays);
   $("#mission-best-candidate").textContent = best ? best.name : "No qualified candidate yet";
   $("#mission-best-savings").textContent = best ? `${money(best.projectedSavings)} potential savings before shipping` : "Discovery and qualification must complete first.";
 
@@ -185,7 +187,7 @@ function renderTrueForge(currentMission, localActions) {
 
 function renderMissions() {
   const currentMission = mission();
-  $("#mission-table-body").innerHTML = data.missions.map(item => `<tr><td><span>${escapeHtml(item.title)}</span><small>${escapeHtml(item.specification)}</small></td><td>${number(item.quantity)}</td><td>${money2(item.currentSupplier.unitPrice)} → target ${money2(item.constraints.targetUnitPrice)}</td><td>${item.currentSupplier.leadTimeDays}d → max ${item.constraints.maxLeadTimeDays}d</td><td><span class="availability in_stock">● ${escapeHtml(stageNames[item.status])}</span></td></tr>`).join("");
+  $("#mission-table-body").innerHTML = data.missions.map(item => `<tr><td><span>${escapeHtml(item.title)}</span><small>${escapeHtml(item.specification)}</small></td><td>${number(item.quantity)}</td><td>${money2(item.currentSupplier.unitPrice)} → target ${money2(item.constraints.targetUnitPrice)}</td><td>${days(item.currentSupplier.leadTimeDays)} → max ${days(item.constraints.maxLeadTimeDays)}</td><td><span class="availability in_stock">● ${escapeHtml(stageNames[item.status])}</span></td></tr>`).join("");
 
   const steps = ["Mission", "Discover", "Qualify", "Contact", "Negotiate", "Compare", "Approval"];
   const current = progressFor(currentMission.status);
@@ -205,10 +207,12 @@ function renderMissions() {
   providerElement.textContent = provider.text;
   providerElement.className = `provider-pill ${provider.className}`.trim();
   $("#execution-status").textContent = currentMission.execution?.fallbackUsed
-    ? "This run used controlled fixture evidence. A configured provider will replace it without changing the mission contract."
-    : currentMission.execution?.discoveryProvider === "remote"
-      ? "This mission's discovery evidence came from the configured external provider."
-      : "The mission is ready to execute discovery through the configured provider or controlled local fallback.";
+    ? "This run used controlled fixture evidence. A configured provider or TrueForge research tool can replace it without changing the mission contract."
+    : currentMission.execution?.discoveryProvider === "trueforge-tools"
+      ? "This mission contains provenance-backed supplier research recorded through TrueForge tools."
+      : currentMission.execution?.discoveryProvider === "remote"
+        ? "This mission's discovery evidence came from the configured external provider."
+        : "The mission is ready to execute discovery through TrueForge research, the configured provider, or controlled local fallback.";
 
   const localActions = Boolean(data.capabilities?.browserMutationsEnabled);
   $("#execution-local-note").hidden = !localActions;
@@ -237,10 +241,10 @@ function renderSuppliers() {
     const checkSummary = candidate.qualification
       ? `${Object.values(candidate.qualification.checks).filter(Boolean).length}/${Object.keys(candidate.qualification.checks).length} checks passed`
       : "Awaiting qualification";
-    return `<article class="panel source-card"><header><div><h3>${escapeHtml(candidate.name)}</h3><code>${escapeHtml(candidate.type)}</code></div><span class="severity ${qualificationClass(candidate.status)}">${escapeHtml(candidate.status.replaceAll("_", " "))}</span></header><p class="source-region">${escapeHtml(candidate.country)} · ${escapeHtml(candidate.region)}</p><div class="source-stats"><span>Preliminary price<b>${money2(candidate.preliminaryUnitPrice)}</b></span><span>Lead time<b>${candidate.leadTimeDays} days</b></span><span>Confidence<b>${Math.round(candidate.confidence * 100)}%</b></span></div><p>${escapeHtml(candidate.reason || "Discovered candidate; qualification has not run yet.")}</p><div class="supplier-proof"><span>${escapeHtml(candidate.source?.kind || "unknown source")}</span><span>${escapeHtml(candidate.source?.reference || "no reference")}</span><span>${escapeHtml(checkSummary)}</span></div></article>`;
+    return `<article class="panel source-card"><header><div><h3>${escapeHtml(candidate.name)}</h3><code>${escapeHtml(candidate.type)}</code></div><span class="severity ${qualificationClass(candidate.status)}">${escapeHtml(candidate.status.replaceAll("_", " "))}</span></header><p class="source-region">${escapeHtml(candidate.country)} · ${escapeHtml(candidate.region)}</p><div class="source-stats"><span>Preliminary price<b>${money2(candidate.preliminaryUnitPrice)}</b></span><span>Lead time<b>${days(candidate.leadTimeDays)}</b></span><span>Confidence<b>${Math.round(candidate.confidence * 100)}%</b></span></div><p>${escapeHtml(candidate.reason || "Discovered candidate; qualification has not run yet.")}</p><div class="supplier-proof"><span>${escapeHtml(candidate.source?.kind || "unknown source")}</span><span>${escapeHtml(candidate.source?.reference || "no reference")}</span><span>${escapeHtml(checkSummary)}</span></div></article>`;
   }).join("");
 
-  $("#supplier-table-body").innerHTML = candidates.map(candidate => `<tr><td><span>${escapeHtml(candidate.name)}</span><small>${escapeHtml(candidate.source?.reference || "—")}</small></td><td>${escapeHtml(candidate.type)}</td><td>${money2(candidate.preliminaryUnitPrice)}</td><td>${candidate.moq}</td><td>${candidate.leadTimeDays} days</td><td>${Math.round(candidate.specMatch * 100)}%</td><td><span class="availability ${candidate.status === "qualified" ? "in_stock" : "low_stock"}">● ${escapeHtml(candidate.status.replaceAll("_", " "))}</span></td></tr>`).join("");
+  $("#supplier-table-body").innerHTML = candidates.map(candidate => `<tr><td><span>${escapeHtml(candidate.name)}</span><small>${escapeHtml(candidate.source?.reference || "—")}</small></td><td>${escapeHtml(candidate.type)}</td><td>${money2(candidate.preliminaryUnitPrice)}</td><td>${number(candidate.moq)}</td><td>${days(candidate.leadTimeDays)}</td><td>${Math.round(candidate.specMatch * 100)}%</td><td><span class="availability ${candidate.status === "qualified" ? "in_stock" : "low_stock"}">● ${escapeHtml(candidate.status.replaceAll("_", " "))}</span></td></tr>`).join("");
 }
 
 function renderConversations() {
@@ -249,7 +253,7 @@ function renderConversations() {
   $("#conversation-ready-count").textContent = qualified.length;
   $("#conversation-active-count").textContent = data.summary.negotiationsActive;
   $("#rfq-targets").innerHTML = qualified.length
-    ? qualified.map(candidate => `<div class="factor"><span>${escapeHtml(candidate.name)}</span><b>${money2(candidate.preliminaryUnitPrice)} · ${candidate.leadTimeDays} days · MOQ ${candidate.moq}</b></div>`).join("")
+    ? qualified.map(candidate => `<div class="factor"><span>${escapeHtml(candidate.name)}</span><b>${money2(candidate.preliminaryUnitPrice)} · ${days(candidate.leadTimeDays)} · MOQ ${number(candidate.moq)}</b></div>`).join("")
     : '<div class="empty-state">No qualified supplier is ready for outreach yet.</div>';
 }
 
