@@ -16,11 +16,38 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - name: Smoke test runtime
+      - name: Runtime and browser smoke tests
         run: |
+          export VENDOR_SCOUT_DATA_PATH=/tmp/vendor-scout-ci.json
+          rm -f "$VENDOR_SCOUT_DATA_PATH"
           node server.mjs > /tmp/vendor-scout.log 2>&1 &
           SERVER_PID=$!
           trap 'kill $SERVER_PID' EXIT
           sleep 1
+
           curl --fail --silent http://127.0.0.1:3000/health | grep '"status":"ok"'
           curl --fail --silent http://127.0.0.1:3000/api/dashboard | grep '"activeMissions":1'
+
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$CHROME_BIN"
+
+          "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --virtual-time-budget=2500 --window-size=1440,1100 --dump-dom 'http://127.0.0.1:3000/#app' > /tmp/vendor-scout-desktop.html
+          grep 'Sourcing Missions' /tmp/vendor-scout-desktop.html
+          grep 'Ready for outreach' /tmp/vendor-scout-desktop.html
+          grep 'Controlled demo fallback' /tmp/vendor-scout-desktop.html
+
+          "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --virtual-time-budget=2500 --window-size=390,844 --dump-dom 'http://127.0.0.1:3000/#app' > /tmp/vendor-scout-mobile.html
+          grep 'Supplier Candidates' /tmp/vendor-scout-mobile.html
+          grep 'Human Approval' /tmp/vendor-scout-mobile.html
+
+          "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --virtual-time-budget=2500 --window-size=1440,1100 --screenshot=/tmp/vendor-scout-desktop.png 'http://127.0.0.1:3000/#app'
+          "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --virtual-time-budget=2500 --window-size=390,844 --screenshot=/tmp/vendor-scout-mobile.png 'http://127.0.0.1:3000/#app'
+      - name: Upload browser evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: vendor-scout-browser-smoke
+          path: |
+            /tmp/vendor-scout-desktop.png
+            /tmp/vendor-scout-mobile.png
+            /tmp/vendor-scout-desktop.html
+            /tmp/vendor-scout-mobile.html
