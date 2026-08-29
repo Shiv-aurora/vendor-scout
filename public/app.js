@@ -147,6 +147,42 @@ function renderOverview() {
     : '<div class="empty-state">No mission activity yet.</div>';
 }
 
+function renderTrueForge(currentMission, localActions) {
+  let panel = $("#trueforge-execution");
+  if (!panel) {
+    panel = document.createElement("article");
+    panel.id = "trueforge-execution";
+    panel.className = "panel execution-panel trueforge-panel";
+    $("#view-missions .execution-panel")?.insertAdjacentElement("afterend", panel);
+  }
+  if (!panel) return;
+
+  const capability = data.capabilities?.trueForge || {};
+  const connection = currentMission.trueForge;
+  const lastTurn = connection?.lastTurn;
+  const configured = Boolean(capability.configured);
+  const connected = Boolean(connection?.sessionId);
+  const requiredCount = lastTurn?.requiredActions?.length || 0;
+  const output = lastTurn?.content ? `<pre class="trueforge-output">${escapeHtml(lastTurn.content)}</pre>` : "";
+  const controls = [];
+
+  if (localActions && configured && !connected) controls.push('<button class="primary-button" data-agent-action="connect_trueforge">Connect TrueForge session</button>');
+  if (localActions && configured && connected && lastTurn?.status !== "running") controls.push('<button class="primary-button" data-agent-action="start_trueforge_turn">Run TrueForge turn</button>');
+  if (localActions && configured && connected && lastTurn?.id) controls.push('<button class="button light" data-agent-action="sync_trueforge_turn">Sync turn state</button>');
+
+  const stateText = !configured
+    ? "TrueForge is not configured for this runtime. Set TRUEFORGE_BASE_URL and TRUEFORGE_AGENT_NAME to enable a real persistent agent session."
+    : !connected
+      ? `TrueForge is configured at ${capability.endpoint} with agent ${capability.agentName}. No session has been created for this mission yet.`
+      : `Persistent session ${connection.sessionId} is connected to ${connection.agentName}.${lastTurn?.id ? ` Last turn ${lastTurn.id}: ${lastTurn.status}.` : " No turn has been started yet."}${requiredCount ? ` ${requiredCount} TrueForge action${requiredCount === 1 ? "" : "s"} require attention.` : ""}`;
+
+  panel.innerHTML = `<div><div class="provider-pill ${connected ? "live" : configured ? "fixture" : ""}">${connected ? "TrueForge session connected" : configured ? "TrueForge configured" : "TrueForge not configured"}</div><h3>Persistent TrueForge orchestration</h3><p>${escapeHtml(stateText)}</p>${output}</div><div class="execution-actions">${controls.join("")}</div>`;
+  $$('[data-agent-action]').forEach(button => {
+    button.disabled = actionPending;
+    button.onclick = () => runMissionAction(button.dataset.agentAction);
+  });
+}
+
 function renderMissions() {
   const currentMission = mission();
   $("#mission-table-body").innerHTML = data.missions.map(item => `<tr><td><span>${escapeHtml(item.title)}</span><small>${escapeHtml(item.specification)}</small></td><td>${number(item.quantity)}</td><td>${money2(item.currentSupplier.unitPrice)} → target ${money2(item.constraints.targetUnitPrice)}</td><td>${item.currentSupplier.leadTimeDays}d → max ${item.constraints.maxLeadTimeDays}d</td><td><span class="availability in_stock">● ${escapeHtml(stageNames[item.status])}</span></td></tr>`).join("");
@@ -183,6 +219,7 @@ function renderMissions() {
   nextButton.disabled = actionPending;
   nextButton.textContent = actionPending ? "Running…" : next?.label || "No local action";
   nextButton.dataset.action = next?.action || "";
+  renderTrueForge(currentMission, localActions);
 }
 
 function renderSuppliers() {
@@ -266,7 +303,7 @@ async function runMissionAction(action) {
     });
     data = result.dashboard;
     render();
-    toast(`${stageNames[mission().status]}`);
+    toast(action.replaceAll("_", " "));
   } catch (error) {
     showWorkspaceError(error.message);
     toast(error.message);
