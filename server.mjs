@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createSeed } from "./lib/seed.mjs";
 import { discoverSuppliers } from "./lib/discovery.mjs";
 import { qualifySupplier, transitionMission, validateMission } from "./lib/domain.mjs";
+import { handleMcpMessage, PROCUREMENT_MCP_TOOLS } from "./lib/mcp.mjs";
 import { migrateState } from "./lib/migrations.mjs";
 import { createDemoStore } from "./lib/store.mjs";
 import { missionTurnPrompt, summarizeTurn, TrueForgeClient } from "./lib/trueforge.mjs";
@@ -15,6 +16,7 @@ const publicRoot = join(root, "public");
 const port = Number(process.env.PORT || 3000);
 const isProduction = process.env.NODE_ENV === "production";
 const configuredAgentToken = process.env.VENDOR_SCOUT_AGENT_TOKEN || "";
+const configuredMcpToken = process.env.VENDOR_SCOUT_MCP_TOKEN || configuredAgentToken;
 const allowFixtureFallback = !isProduction || process.env.VENDOR_SCOUT_ALLOW_FIXTURE_FALLBACK === "1";
 const devResetEnabled = !isProduction || process.env.VENDOR_SCOUT_ENABLE_DEV_RESET === "1";
 const trueForge = new TrueForgeClient();
@@ -68,12 +70,23 @@ function safeTokenEquals(received, expected) {
   return timingSafeEqual(receivedBuffer, expectedBuffer);
 }
 
-function isAgentAuthorized(req) {
-  if (!isProduction && !configuredAgentToken) return true;
-  if (!configuredAgentToken) return false;
+function requestBearerToken(req) {
   const header = req.headers.authorization || "";
-  const received = header.startsWith("Bearer ") ? header.slice(7) : "";
-  return safeTokenEquals(received, configuredAgentToken);
+  return header.startsWith("Bearer ") ? header.slice(7) : "";
+}
+
+function isAuthorized(req, expectedToken) {
+  if (!isProduction && !expectedToken) return true;
+  if (!expectedToken) return false;
+  return safeTokenEquals(requestBearerToken(req), expectedToken);
+}
+
+function isAgentAuthorized(req) {
+  return isAuthorized(req, configuredAgentToken);
+}
+
+function isMcpAuthorized(req) {
+  return isAuthorized(req, configuredMcpToken);
 }
 
 async function readJsonBody(req, limit = 64 * 1024) {
@@ -95,6 +108,11 @@ function capabilities() {
     discoveryProvider: process.env.VENDOR_SCOUT_DISCOVERY_URL ? "remote" : allowFixtureFallback ? "controlled-fixture" : "unconfigured",
     fixtureFallbackEnabled: allowFixtureFallback,
     devResetEnabled,
+    mcp: {
+      enabled: !isProduction || Boolean(configuredMcpToken),
+      endpoint: "/mcp",
+      toolCount: PROCUREMENT_MCP_TOOLS.length
+    },
     trueForge: {
       configured: trueForge.configured,
       endpoint: trueForge.safeEndpoint,
@@ -284,16 +302,66 @@ async function executeMissionAction(id, action) {
   return { mission: missionSnapshot(id), dashboard: currentDashboard };
 }
 
+async function mcpDiscoverMission(id) {
+  return serializeMutation(async () => {
+    let mission = state.missions.find(item => item.id === id);
+    if (!mission) throw httpError(404, "Sourcing mission not found");
+    if (mission.status === "draft") await executeMissionAction(id, "start");
+    mission = state.missions.find(item => item.id === id);
+    if (mission.status === "discovering") return (await executeMissionAction(id, "discover")).mission;
+    if (["qualifying", "contacting", "negotiating", "comparing", "awaiting_approval", "approved", "completed"].includes(mission.status)) return missionSnapshot(id);
+    throw httpError(409, `Supplier discovery is not available while mission status is ${mission.status}`);
+  });
+}
+
+async function mcpQualifyMission(id) {
+  return serializeMutation(async () => {
+    const mission = state.missions.find(item => item.id === id);
+    if (!mission) throw httpError(404, "Sourcing mission not found");
+    if (mission.status === "qualifying") return (await executeMissionAction(id, "qualify")).mission;
+    if (["contacting", "negotiating", "comparing", "awaiting_approval", "approved", "completed"].includes(mission.status)) return missionSnapshot(id);
+    throw httpError(409, `Supplier qualification requires completed discovery; mission status is ${mission.status}`);
+  });
+}
+
+const mcpContext = {
+  getMission: async id => missionSnapshot(id),
+  discoverSuppliers: mcpDiscoverMission,
+  qualifySuppliers: mcpQualifyMission
+};
+
 export async function handleRequest(req, res) {
   try {
     for (const [name, value] of Object.entries(securityHeaders)) res.setHeader(name, value);
     const url = new URL(req.url, "http://localhost");
+
+    if (url.pathname === "/mcp") {
+      if (req.method === "GET") {
+        res.writeHead(405, { Allow: "POST, OPTIONS" });
+        return res.end();
+      }
+      if (req.method === "OPTIONS") {
+        res.writeHead(204, { Allow: "POST, OPTIONS" });
+        return res.end();
+      }
+      if (req.method !== "POST") return json(res, 405, { error: "Method not allowed" });
+      if (!isMcpAuthorized(req)) return json(res, configuredMcpToken ? 401 : 503, { error: configuredMcpToken ? "MCP authorization required" : "MCP is disabled until VENDOR_SCOUT_MCP_TOKEN or VENDOR_SCOUT_AGENT_TOKEN is configured" });
+      if (!allowMutation(req)) { res.setHeader("Retry-After", "60"); return json(res, 429, { error: "Too many MCP requests" }); }
+      const message = await readJsonBody(req, 256 * 1024);
+      const response = await handleMcpMessage(message, mcpContext);
+      if (response === null) {
+        res.writeHead(202, { "Cache-Control": "no-store" });
+        return res.end();
+      }
+      return json(res, 200, response);
+    }
+
     const isApiMutation = url.pathname.startsWith("/api/") && !["GET", "HEAD", "OPTIONS"].includes(req.method);
     if (isApiMutation && !isSameOriginRequest(req)) return json(res, 403, { error: "Cross-origin mutation denied" });
     if (isApiMutation && !allowMutation(req)) { res.setHeader("Retry-After", "60"); return json(res, 429, { error: "Too many mutation requests" }); }
     if (req.method === "OPTIONS" && url.pathname.startsWith("/api/")) { res.writeHead(204, { Allow: "GET,HEAD,POST,OPTIONS" }); return res.end(); }
 
-    if (url.pathname === "/health") return json(res, 200, { status: "ok", service: "vendor-scout", mode: state.meta.mode, persistence: store.kind, contractVersion: state.meta.contractVersion, trueForgeConfigured: trueForge.configured, now: new Date().toISOString() });
+    if (url.pathname === "/health") return json(res, 200, { status: "ok", service: "vendor-scout", mode: state.meta.mode, persistence: store.kind, contractVersion: state.meta.contractVersion, trueForgeConfigured: trueForge.configured, mcpEnabled: capabilities().mcp.enabled, now: new Date().toISOString() });
     if (url.pathname === "/api/dashboard" && req.method === "GET") return json(res, 200, dashboard());
     if (url.pathname === "/api/capabilities" && req.method === "GET") return json(res, 200, capabilities());
 
