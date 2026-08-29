@@ -8,6 +8,13 @@ import { discoverSuppliers, normalizeDiscoveredCandidates } from "./lib/discover
 import { qualifySupplier, transitionMission, validateMission } from "./lib/domain.mjs";
 import { handleMcpMessage, PROCUREMENT_MCP_TOOLS } from "./lib/mcp.mjs";
 import { migrateState } from "./lib/migrations.mjs";
+import {
+  createRfqConversation,
+  deliverRfq,
+  isExternallyAccepted,
+  outboundRfqMessage,
+  recordSupplierReply
+} from "./lib/outreach.mjs";
 import { createDemoStore } from "./lib/store.mjs";
 import { missionTurnPrompt, summarizeTurn, TrueForgeClient } from "./lib/trueforge.mjs";
 
@@ -18,6 +25,7 @@ const isProduction = process.env.NODE_ENV === "production";
 const configuredAgentToken = process.env.VENDOR_SCOUT_AGENT_TOKEN || "";
 const configuredMcpToken = process.env.VENDOR_SCOUT_MCP_TOKEN || configuredAgentToken;
 const allowFixtureFallback = !isProduction || process.env.VENDOR_SCOUT_ALLOW_FIXTURE_FALLBACK === "1";
+const allowOutreachPreview = !isProduction || process.env.VENDOR_SCOUT_ALLOW_OUTREACH_PREVIEW === "1";
 const devResetEnabled = !isProduction || process.env.VENDOR_SCOUT_ENABLE_DEV_RESET === "1";
 const trueForge = new TrueForgeClient();
 
@@ -101,12 +109,20 @@ async function readJsonBody(req, limit = 64 * 1024) {
   try { return JSON.parse(raw); } catch { throw httpError(400, "Request body must be valid JSON"); }
 }
 
+function conversationHasExternalContact(conversation) {
+  return conversation.messages.some(message => message.direction === "inbound" || isExternallyAccepted(message));
+}
+
 function capabilities() {
   return {
     agentMutationsEnabled: !isProduction || Boolean(configuredAgentToken),
     browserMutationsEnabled: !isProduction && !configuredAgentToken,
     discoveryProvider: process.env.VENDOR_SCOUT_DISCOVERY_URL ? "remote" : allowFixtureFallback ? "controlled-fixture" : "unconfigured",
     fixtureFallbackEnabled: allowFixtureFallback,
+    outreach: {
+      provider: process.env.VENDOR_SCOUT_OUTREACH_URL ? "remote" : allowOutreachPreview ? "controlled-preview" : "unconfigured",
+      previewEnabled: allowOutreachPreview
+    },
     devResetEnabled,
     mcp: {
       enabled: !isProduction || Boolean(configuredMcpToken),
@@ -124,9 +140,10 @@ function capabilities() {
 function dashboard() {
   const activeMissions = state.missions.filter(mission => !["completed", "rejected"].includes(mission.status));
   const qualified = state.supplierCandidates.filter(candidate => candidate.status === "qualified");
-  const negotiationsActive = state.conversations.filter(conversation => conversation.status === "negotiating").length;
+  const negotiationsActive = state.conversations.filter(conversation => ["supplier_replied", "negotiating"].includes(conversation.status)).length;
   const approvalsWaiting = state.approvals.filter(approval => approval.status === "pending").length;
   const projectedSavings = Math.max(0, ...qualified.map(candidate => candidate.projectedSavings || 0));
+  const contacted = new Set(state.conversations.filter(conversationHasExternalContact).map(conversation => conversation.supplierId));
 
   return {
     ...state,
@@ -136,7 +153,7 @@ function dashboard() {
       activeMissions: activeMissions.length,
       suppliersDiscovered: state.supplierCandidates.length,
       suppliersQualified: qualified.length,
-      suppliersContacted: new Set(state.conversations.map(conversation => conversation.supplierId)).size,
+      suppliersContacted: contacted.size,
       negotiationsActive,
       quotesReceived: state.quotes.length,
       approvalsWaiting,
@@ -191,6 +208,106 @@ function requireStatus(mission, expected, action) {
 
 function requireTrueForgeConfigured() {
   if (!trueForge.configured) throw httpError(503, "TrueForge is not configured; set TRUEFORGE_BASE_URL and TRUEFORGE_AGENT_NAME");
+}
+
+function prepareRfqConversations(mission) {
+  const qualified = state.supplierCandidates.filter(candidate => candidate.missionId === mission.id && candidate.status === "qualified");
+  if (!qualified.length) throw httpError(409, "No qualified suppliers are available for outreach");
+  const existing = new Map(state.conversations.filter(conversation => conversation.missionId === mission.id).map(conversation => [conversation.supplierId, conversation]));
+  let created = 0;
+  for (const candidate of qualified) {
+    if (existing.has(candidate.id)) continue;
+    const conversation = createRfqConversation(mission, candidate);
+    state.conversations.push(conversation);
+    existing.set(candidate.id, conversation);
+    created += 1;
+  }
+  return { qualified, conversations: [...existing.values()].filter(conversation => qualified.some(candidate => candidate.id === conversation.supplierId)), created };
+}
+
+async function sendPreparedOutreach(mission) {
+  const { qualified, conversations, created } = prepareRfqConversations(mission);
+  if (created) {
+    addActivity(mission.id, "contact", `${created} RFQ draft${created === 1 ? "" : "s"} prepared`, "Drafts request pricing tiers, MOQ, availability, lead time, shipping, sample terms, certifications, and technical confirmation without making a purchase commitment.");
+    await persist();
+  }
+
+  const candidateById = new Map(qualified.map(candidate => [candidate.id, candidate]));
+  let externallyAccepted = 0;
+  let previewed = 0;
+  let failed = 0;
+  let missingContact = 0;
+
+  for (const conversation of conversations) {
+    const candidate = candidateById.get(conversation.supplierId);
+    const message = outboundRfqMessage(conversation);
+    if (!candidate || !message) continue;
+    if (isExternallyAccepted(message)) {
+      externallyAccepted += 1;
+      continue;
+    }
+    if (!message.to) {
+      conversation.status = "missing_contact";
+      missingContact += 1;
+      continue;
+    }
+
+    message.delivery.status = "sending";
+    message.delivery.attemptedAt = new Date().toISOString();
+    message.delivery.error = null;
+    conversation.status = "sending";
+    conversation.updatedAt = message.delivery.attemptedAt;
+    await persist();
+
+    try {
+      const delivery = await deliverRfq({ mission, candidate, conversation, message }, { allowControlledPreview: allowOutreachPreview });
+      message.delivery = {
+        ...message.delivery,
+        status: delivery.status,
+        provider: delivery.provider,
+        externalMessageId: delivery.externalMessageId,
+        deliveredAt: delivery.deliveredAt,
+        error: null
+      };
+      conversation.status = delivery.simulated ? "previewed" : "rfq_sent";
+      conversation.updatedAt = new Date().toISOString();
+      if (delivery.simulated) previewed += 1;
+      else externallyAccepted += 1;
+    } catch (error) {
+      message.delivery.status = "failed";
+      message.delivery.error = String(error.message || error).slice(0, 2000);
+      conversation.status = "delivery_failed";
+      conversation.updatedAt = new Date().toISOString();
+      failed += 1;
+    }
+    await persist();
+  }
+
+  const allQualifiedExternallyContacted = conversations.length > 0 && conversations.every(conversation => isExternallyAccepted(outboundRfqMessage(conversation)));
+  if (allQualifiedExternallyContacted && mission.status === "contacting") {
+    mission.status = transitionMission(mission.status, "outreach_complete");
+    mission.updatedAt = new Date().toISOString();
+    addActivity(mission.id, "contact", "Supplier outreach completed", `${externallyAccepted} qualified supplier${externallyAccepted === 1 ? "" : "s"} accepted an RFQ through the configured external transport. The mission can now continue with supplier replies and negotiation.`);
+  } else {
+    addActivity(mission.id, "contact", "Supplier outreach checkpoint", `${externallyAccepted} externally accepted · ${previewed} controlled preview · ${missingContact} missing contact · ${failed} failed. Controlled previews do not advance the mission to negotiation.`);
+  }
+  await persist();
+  return missionSnapshot(mission.id);
+}
+
+async function recordMissionSupplierReply(missionId, supplierId, payload) {
+  const mission = state.missions.find(item => item.id === missionId);
+  if (!mission) throw httpError(404, "Sourcing mission not found");
+  const conversation = state.conversations.find(item => item.missionId === missionId && item.supplierId === supplierId);
+  if (!conversation) throw httpError(404, "Supplier conversation not found");
+  recordSupplierReply(conversation, payload);
+  if (mission.status === "contacting" && conversationHasExternalContact(conversation)) {
+    mission.status = transitionMission(mission.status, "outreach_complete");
+    mission.updatedAt = new Date().toISOString();
+  }
+  addActivity(missionId, "conversation", `Supplier reply recorded from ${conversation.supplierName}`, "The reply was persisted with source provenance for later term extraction and negotiation.");
+  await persist();
+  return missionSnapshot(missionId);
 }
 
 async function executeMissionAction(id, action) {
@@ -248,6 +365,13 @@ async function executeMissionAction(id, action) {
     const rejected = evaluated.filter(candidate => candidate.status === "rejected").length;
     const review = evaluated.filter(candidate => candidate.status === "needs_review").length;
     addActivity(id, "qualify", "Qualification completed", `${qualified} qualified · ${review} need review · ${rejected} rejected. Qualified suppliers are ready for outreach.`);
+  } else if (action === "prepare_outreach") {
+    requireStatus(mission, "contacting", "prepare outreach");
+    const result = prepareRfqConversations(mission);
+    if (result.created) addActivity(id, "contact", `${result.created} RFQ draft${result.created === 1 ? "" : "s"} prepared`, "RFQs are non-binding and request the complete commercial and technical quote packet.");
+  } else if (action === "send_outreach") {
+    requireStatus(mission, "contacting", "send outreach");
+    return { mission: await sendPreparedOutreach(mission), dashboard: dashboard() };
   } else if (action === "connect_trueforge") {
     requireTrueForgeConfigured();
     if (!mission.trueForge?.sessionId) {
@@ -362,11 +486,43 @@ async function mcpQualifyMission(id) {
   });
 }
 
+async function mcpPrepareOutreach(id) {
+  return serializeMutation(async () => {
+    const mission = state.missions.find(item => item.id === id);
+    if (!mission) throw httpError(404, "Sourcing mission not found");
+    if (mission.status !== "contacting") {
+      if (["negotiating", "comparing", "awaiting_approval", "approved", "completed"].includes(mission.status)) return missionSnapshot(id);
+      throw httpError(409, `RFQ preparation requires qualified suppliers; mission status is ${mission.status}`);
+    }
+    const result = prepareRfqConversations(mission);
+    if (result.created) addActivity(id, "contact", `${result.created} RFQ draft${result.created === 1 ? "" : "s"} prepared`, "RFQ drafts are non-binding and remain attached to the sourcing mission.");
+    await persist();
+    return missionSnapshot(id);
+  });
+}
+
+async function mcpSendOutreach(id) {
+  return serializeMutation(async () => {
+    const mission = state.missions.find(item => item.id === id);
+    if (!mission) throw httpError(404, "Sourcing mission not found");
+    if (mission.status === "contacting") return sendPreparedOutreach(mission);
+    if (["negotiating", "comparing", "awaiting_approval", "approved", "completed"].includes(mission.status)) return missionSnapshot(id);
+    throw httpError(409, `Supplier outreach requires the contacting stage; mission status is ${mission.status}`);
+  });
+}
+
+async function mcpRecordReply(id, supplierId, payload) {
+  return serializeMutation(() => recordMissionSupplierReply(id, supplierId, payload));
+}
+
 const mcpContext = {
   getMission: async id => missionSnapshot(id),
   discoverSuppliers: mcpDiscoverMission,
   recordSuppliers: mcpRecordSuppliers,
-  qualifySuppliers: mcpQualifyMission
+  qualifySuppliers: mcpQualifyMission,
+  prepareOutreach: mcpPrepareOutreach,
+  sendOutreach: mcpSendOutreach,
+  recordReply: mcpRecordReply
 };
 
 export async function handleRequest(req, res) {
@@ -411,6 +567,16 @@ export async function handleRequest(req, res) {
       const body = await readJsonBody(req);
       const result = await serializeMutation(() => executeMissionAction(id, body.action));
       return json(res, 200, result);
+    }
+
+    const replyMatch = url.pathname.match(/^\/api\/missions\/([^/]+)\/suppliers\/([^/]+)\/reply$/);
+    if (replyMatch && req.method === "POST") {
+      if (!isAgentAuthorized(req)) return json(res, configuredAgentToken ? 401 : 503, { error: configuredAgentToken ? "Agent authorization required" : "Agent mutation API is disabled until VENDOR_SCOUT_AGENT_TOKEN is configured" });
+      const missionId = decodeURIComponent(replyMatch[1]);
+      const supplierId = decodeURIComponent(replyMatch[2]);
+      const body = await readJsonBody(req, 128 * 1024);
+      const snapshot = await serializeMutation(() => recordMissionSupplierReply(missionId, supplierId, body));
+      return json(res, 200, snapshot);
     }
 
     const missionMatch = url.pathname.match(/^\/api\/missions\/([^/]+)$/);
