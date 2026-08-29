@@ -1,4 +1,8 @@
 .metrics-panel{grid-template-columns:repeat(4,minmax(0,1fr))}
+.risk-list{align-content:start}
+.score-ring{position:relative;isolation:isolate;flex:0 0 112px;min-width:112px;aspect-ratio:1}
+.score-ring strong{display:block;position:relative;z-index:1;color:var(--ink)!important;line-height:1!important}
+.score-ring small{display:block;position:relative;z-index:1;margin-top:2px}
 .mission-policy-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
 .policy-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
 .policy-card span{display:block;color:var(--muted);font-size:9px;margin-bottom:7px;text-transform:uppercase;letter-spacing:.08em}
@@ -15,4 +19,4 @@
 .empty-state{padding:28px;border:1px dashed #cbd7e4;border-radius:14px;color:var(--muted);text-align:center;background:#fff}
 .error-state{padding:14px 16px;border:1px solid #ffc9c4;background:#fff4f2;color:#a13c34;border-radius:10px;font-size:11px;line-height:1.5;margin-bottom:16px}
 @media(max-width:1050px){.metrics-panel{grid-template-columns:repeat(2,minmax(0,1fr))}.mission-policy-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.execution-panel{grid-template-columns:1fr}.execution-actions{justify-content:flex-start}}
-@media(max-width:720px){.metrics-panel{grid-template-columns:repeat(2,minmax(0,1fr))}.mission-policy-grid{grid-template-columns:1fr}.rail{overflow:hidden}.rail nav{overflow-x:auto;justify-content:flex-start;gap:4px;scrollbar-width:none}.rail nav::-webkit-scrollbar{display:none}.nav-item{flex:0 0 auto;padding:10px 9px;font-size:9px}.app-main{padding-bottom:78px}.execution-actions{display:grid;grid-template-columns:1fr}.execution-actions button{width:100%}.supplier-proof{flex-direction:column;gap:4px}}
+@media(max-width:720px){.metrics-panel{grid-template-columns:repeat(2,minmax(0,1fr))}.mission-policy-grid{grid-template-columns:1fr}.rail{overflow:hidden}.rail nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%;gap:2px;margin:0;overflow:visible}.nav-item{min-width:0;padding:10px 3px;font-size:8px;text-align:center;white-space:nowrap}.score-ring{flex-basis:96px;min-width:96px;width:96px;height:96px}.readiness-body{align-items:center;gap:18px}.app-main{padding-bottom:78px}.execution-actions{display:grid;grid-template-columns:1fr}.execution-actions button{width:100%}.supplier-proof{flex-direction:column;gap:4px}}
