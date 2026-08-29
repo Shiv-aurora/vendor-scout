@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createSeed } from "./lib/seed.mjs";
-import { discoverSuppliers } from "./lib/discovery.mjs";
+import { discoverSuppliers, normalizeDiscoveredCandidates } from "./lib/discovery.mjs";
 import { qualifySupplier, transitionMission, validateMission } from "./lib/domain.mjs";
 import { handleMcpMessage, PROCUREMENT_MCP_TOOLS } from "./lib/mcp.mjs";
 import { migrateState } from "./lib/migrations.mjs";
@@ -314,6 +314,44 @@ async function mcpDiscoverMission(id) {
   });
 }
 
+async function mcpRecordSuppliers(id, candidates) {
+  return serializeMutation(async () => {
+    let mission = state.missions.find(item => item.id === id);
+    if (!mission) throw httpError(404, "Sourcing mission not found");
+    const missionErrors = validateMission(mission);
+    if (missionErrors.length) throw httpError(422, `Mission is invalid: ${missionErrors.join("; ")}`);
+    if (mission.status === "draft") {
+      await executeMissionAction(id, "start");
+      mission = state.missions.find(item => item.id === id);
+    }
+    if (!new Set(["discovering", "qualifying"]).has(mission.status)) {
+      throw httpError(409, `Live supplier research can only be recorded during discovery or qualification; mission status is ${mission.status}`);
+    }
+
+    const normalized = normalizeDiscoveredCandidates(mission, candidates, "trueforge-research");
+    const existing = state.supplierCandidates.filter(candidate => candidate.missionId === id);
+    const merged = new Map(existing.map(candidate => [candidate.id, candidate]));
+    for (const candidate of normalized) merged.set(candidate.id, candidate);
+    state.supplierCandidates = [
+      ...state.supplierCandidates.filter(candidate => candidate.missionId !== id),
+      ...merged.values()
+    ];
+
+    if (mission.status === "discovering") mission.status = transitionMission(mission.status, "discovery_complete");
+    mission.updatedAt = new Date().toISOString();
+    mission.execution = {
+      ...(mission.execution || {}),
+      discoveryProvider: "trueforge-tools",
+      fallbackUsed: false,
+      providerError: null,
+      lastRunAt: mission.updatedAt
+    };
+    addActivity(id, "discover", `${normalized.length} researched supplier candidate${normalized.length === 1 ? "" : "s"} recorded`, "TrueForge research was persisted with explicit source provenance. Missing commercial fields remain unverified rather than inferred.");
+    await persist();
+    return missionSnapshot(id);
+  });
+}
+
 async function mcpQualifyMission(id) {
   return serializeMutation(async () => {
     const mission = state.missions.find(item => item.id === id);
@@ -327,6 +365,7 @@ async function mcpQualifyMission(id) {
 const mcpContext = {
   getMission: async id => missionSnapshot(id),
   discoverSuppliers: mcpDiscoverMission,
+  recordSuppliers: mcpRecordSuppliers,
   qualifySuppliers: mcpQualifyMission
 };
 
