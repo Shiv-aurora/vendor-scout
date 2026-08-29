@@ -8,6 +8,7 @@ import { discoverSuppliers } from "./lib/discovery.mjs";
 import { qualifySupplier, transitionMission, validateMission } from "./lib/domain.mjs";
 import { migrateState } from "./lib/migrations.mjs";
 import { createDemoStore } from "./lib/store.mjs";
+import { missionTurnPrompt, summarizeTurn, TrueForgeClient } from "./lib/trueforge.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const publicRoot = join(root, "public");
@@ -16,6 +17,7 @@ const isProduction = process.env.NODE_ENV === "production";
 const configuredAgentToken = process.env.VENDOR_SCOUT_AGENT_TOKEN || "";
 const allowFixtureFallback = !isProduction || process.env.VENDOR_SCOUT_ALLOW_FIXTURE_FALLBACK === "1";
 const devResetEnabled = !isProduction || process.env.VENDOR_SCOUT_ENABLE_DEV_RESET === "1";
+const trueForge = new TrueForgeClient();
 
 const store = await createDemoStore(createSeed());
 let state = await store.snapshot();
@@ -92,7 +94,12 @@ function capabilities() {
     browserMutationsEnabled: !isProduction && !configuredAgentToken,
     discoveryProvider: process.env.VENDOR_SCOUT_DISCOVERY_URL ? "remote" : allowFixtureFallback ? "controlled-fixture" : "unconfigured",
     fixtureFallbackEnabled: allowFixtureFallback,
-    devResetEnabled
+    devResetEnabled,
+    trueForge: {
+      configured: trueForge.configured,
+      endpoint: trueForge.safeEndpoint,
+      agentName: trueForge.configured ? trueForge.agentName : null
+    }
   };
 }
 
@@ -164,6 +171,10 @@ function requireStatus(mission, expected, action) {
   }
 }
 
+function requireTrueForgeConfigured() {
+  if (!trueForge.configured) throw httpError(503, "TrueForge is not configured; set TRUEFORGE_BASE_URL and TRUEFORGE_AGENT_NAME");
+}
+
 async function executeMissionAction(id, action) {
   const mission = state.missions.find(item => item.id === id);
   if (!mission) throw httpError(404, "Sourcing mission not found");
@@ -219,6 +230,52 @@ async function executeMissionAction(id, action) {
     const rejected = evaluated.filter(candidate => candidate.status === "rejected").length;
     const review = evaluated.filter(candidate => candidate.status === "needs_review").length;
     addActivity(id, "qualify", "Qualification completed", `${qualified} qualified · ${review} need review · ${rejected} rejected. Qualified suppliers are ready for outreach.`);
+  } else if (action === "connect_trueforge") {
+    requireTrueForgeConfigured();
+    if (!mission.trueForge?.sessionId) {
+      const session = await trueForge.createSession();
+      mission.trueForge = {
+        sessionId: session.id,
+        agentName: trueForge.agentName,
+        endpoint: trueForge.safeEndpoint,
+        connectedAt: new Date().toISOString(),
+        lastTurn: null
+      };
+      mission.updatedAt = mission.trueForge.connectedAt;
+      addActivity(id, "agent", "TrueForge session connected", `Persistent session ${session.id} is bound to the ${trueForge.agentName} agent.`);
+    } else {
+      await trueForge.getSession(mission.trueForge.sessionId);
+      mission.trueForge.lastVerifiedAt = new Date().toISOString();
+      addActivity(id, "agent", "TrueForge session verified", `Persistent session ${mission.trueForge.sessionId} is still available.`);
+    }
+  } else if (action === "start_trueforge_turn") {
+    requireTrueForgeConfigured();
+    if (!mission.trueForge?.sessionId) throw httpError(409, "Connect a TrueForge session before starting a turn");
+    if (mission.trueForge.lastTurn?.status === "running") throw httpError(409, "A TrueForge turn is already running for this mission");
+    const suppliers = state.supplierCandidates.filter(candidate => candidate.missionId === id);
+    const activity = state.activity.filter(item => item.missionId === id);
+    const turn = await trueForge.createTurn(mission.trueForge.sessionId, missionTurnPrompt(mission, { suppliers, activity }));
+    const summary = summarizeTurn(turn);
+    mission.trueForge.lastTurn = { ...summary, startedAt: new Date().toISOString(), syncedAt: new Date().toISOString() };
+    mission.updatedAt = mission.trueForge.lastTurn.startedAt;
+    addActivity(id, "agent", "TrueForge turn started", `Turn ${summary.id} started in persistent session ${mission.trueForge.sessionId}.`);
+  } else if (action === "sync_trueforge_turn") {
+    requireTrueForgeConfigured();
+    const lastTurn = mission.trueForge?.lastTurn;
+    if (!mission.trueForge?.sessionId || !lastTurn?.id) throw httpError(409, "No TrueForge turn exists for this mission");
+    const turn = await trueForge.getTurn(mission.trueForge.sessionId, lastTurn.id);
+    const summary = summarizeTurn(turn);
+    const previousStatus = lastTurn.status;
+    mission.trueForge.lastTurn = {
+      ...lastTurn,
+      ...summary,
+      syncedAt: new Date().toISOString()
+    };
+    mission.updatedAt = mission.trueForge.lastTurn.syncedAt;
+    if (summary.status !== previousStatus) {
+      const required = summary.requiredActions.length ? ` · ${summary.requiredActions.length} action${summary.requiredActions.length === 1 ? "" : "s"} require attention` : "";
+      addActivity(id, "agent", `TrueForge turn ${summary.status}`, `Turn ${summary.id} changed from ${previousStatus} to ${summary.status}${required}.`);
+    }
   } else {
     throw httpError(400, `Unsupported mission action: ${action || "missing"}`);
   }
@@ -236,7 +293,7 @@ export async function handleRequest(req, res) {
     if (isApiMutation && !allowMutation(req)) { res.setHeader("Retry-After", "60"); return json(res, 429, { error: "Too many mutation requests" }); }
     if (req.method === "OPTIONS" && url.pathname.startsWith("/api/")) { res.writeHead(204, { Allow: "GET,HEAD,POST,OPTIONS" }); return res.end(); }
 
-    if (url.pathname === "/health") return json(res, 200, { status: "ok", service: "vendor-scout", mode: state.meta.mode, persistence: store.kind, contractVersion: state.meta.contractVersion, now: new Date().toISOString() });
+    if (url.pathname === "/health") return json(res, 200, { status: "ok", service: "vendor-scout", mode: state.meta.mode, persistence: store.kind, contractVersion: state.meta.contractVersion, trueForgeConfigured: trueForge.configured, now: new Date().toISOString() });
     if (url.pathname === "/api/dashboard" && req.method === "GET") return json(res, 200, dashboard());
     if (url.pathname === "/api/capabilities" && req.method === "GET") return json(res, 200, capabilities());
 
