@@ -1,8 +1,32 @@
 # Vendor Scout
 
-Vendor Scout is a self-contained local demo for exploring hardware supply risk. It combines a dependency-light frontend, a native Node.js server, deterministic fictional data, and local JSON persistence.
+Vendor Scout is an autonomous procurement agent for hardware teams.
 
-This workspace has no source-control history or remote, no hosting-project link, and no third-party runtime integration. It is intended to be a safe starting point for a new product direction.
+**Find better suppliers. Negotiate automatically. Approve the best deal.**
+
+The product is being built for the TrueForge Hackathon by WeMakeDevs. Its end state is a persistent sourcing agent that discovers supplier alternatives, qualifies them, handles RFQ and negotiation work, normalizes the resulting offers, and stops for human approval before a consequential commercial action.
+
+## Current implementation
+
+The repository started as a local hardware supply-risk demo. That shell is now being converted in place rather than replaced.
+
+The current foundation includes:
+
+- the Atlas Robotics 500-unit LiDAR sourcing mission
+- mission constraints for price, lead time, region, technical fit, confidence, and sample budget
+- structured supplier candidates with provenance and qualification decisions
+- procurement navigation: Overview, Sourcing Missions, Suppliers, Conversations, Approvals
+- an explicit mission lifecycle and approval boundary
+- local JSON persistence for development
+- Node.js tests for lifecycle, approval gating, seed integrity, savings calculations, and persistence
+
+The current seed intentionally stops at **supplier qualification**. Outreach, supplier conversations, negotiation, quotes, approval execution, and sample ordering are not presented as completed behavior until those integrations exist.
+
+See:
+
+- `docs/VISION.md` — product north star
+- `docs/IMPLEMENTATION.md` — phased implementation route
+- `docs/STATUS.md` — current execution checkpoint
 
 ## Run locally
 
@@ -13,34 +37,23 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open `http://localhost:3000`.
 
-No credentials are required. Optional local settings can be copied from `.env.example`:
+Optional local settings can be copied from `.env.example`:
 
 | Variable | Purpose |
 | --- | --- |
 | `PORT` | Local server port; defaults to `3000` |
 | `VENDOR_SCOUT_DATA_PATH` | Local JSON state path; defaults to `data/runtime.json` |
 
-## Local endpoints
+## Current endpoints
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /health` | Local runtime status |
-| `GET /api/dashboard` | Complete sample dashboard model |
-| `GET /api/components/:id` | Component details, observations, trend, and alternatives |
-| `POST /api/demo/degrade` | Introduce a deterministic sample-data issue |
-| `POST /api/demo/heal` | Correct the local fixture |
-| `POST /api/demo/verify` | Verify the corrected sample |
-| `POST /api/demo/reset` | Restore the original local demo state |
-
-## Project structure
-
-- `public/` contains the landing page, dashboard, styles, and generic supply-network artwork.
-- `lib/seed.mjs` contains fictional sample data.
-- `lib/domain.mjs` contains risk scoring, validation, and state-transition rules.
-- `lib/store.mjs` provides local file persistence only.
-- `server.mjs` serves static assets and the local demo API.
+| `GET /health` | Runtime status |
+| `GET /api/dashboard` | Procurement command-center state and summary |
+| `GET /api/missions/:id` | One sourcing mission with related suppliers, conversations, quotes, approvals, and activity |
+| `POST /api/dev/reset` | Reset local development state to the current procurement seed |
 
 ## Verification
 
@@ -49,4 +62,8 @@ npm test
 npm run check
 ```
 
-Generated state is written to `data/runtime.json`, which is ignored by source control. Delete that file or use the in-app reset control to restore the seed dataset.
+CI also smoke-tests the running server and dashboard contract when GitHub Actions is available.
+
+## Next milestone
+
+Replace the deterministic discovery/qualification fixture with executable supplier discovery and qualification, then connect the persistent mission to TrueForge as the workflow orchestrator before adding supplier outreach and negotiation.

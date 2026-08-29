@@ -1,0 +1,26 @@
+name: Vendor Scout CI
+
+on:
+  push:
+    branches: [main, "build/**"]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: Smoke test runtime
+        run: |
+          node server.mjs > /tmp/vendor-scout.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID' EXIT
+          sleep 1
+          curl --fail --silent http://127.0.0.1:3000/health | grep '"status":"ok"'
+          curl --fail --silent http://127.0.0.1:3000/api/dashboard | grep '"activeMissions":1'
