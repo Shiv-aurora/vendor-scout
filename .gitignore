@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+*.md
+!README.md
+.playwright-mcp/
+.playwright-cli/
+output/
+data/runtime.json
+node_modules/
+coverage/
+*.log
+.DS_Store
+skills-lock.json
