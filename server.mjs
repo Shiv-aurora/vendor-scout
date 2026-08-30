@@ -432,7 +432,17 @@ function quoteAnalysisSignature(analysis) {
       rank: quote.rank
     })),
     offerEvaluations: analysis.offerEvaluations,
-    recommendation: analysis.recommendation,
+    recommendation: analysis.recommendation ? {
+      id: analysis.recommendation.id,
+      quoteId: analysis.recommendation.quoteId,
+      supplierId: analysis.recommendation.supplierId,
+      status: analysis.recommendation.status,
+      score: analysis.recommendation.score,
+      reasons: analysis.recommendation.reasons,
+      risks: analysis.recommendation.risks,
+      humanApprovalRequired: analysis.recommendation.humanApprovalRequired,
+      commitmentExecuted: analysis.recommendation.commitmentExecuted
+    } : null,
     blockers: analysis.blockers
   });
 }
