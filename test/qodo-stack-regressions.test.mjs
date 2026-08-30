@@ -355,7 +355,17 @@ test("changed extraction supersedes a stale unsent counter", () => {
 
 test("direct counter send persists negotiation readiness when no counter is needed", async t => {
   const runtime = await startRuntime(t);
-  await postJson(`${runtime.baseUrl}/api/dev/reset`, { stage: "negotiating" });
+  await postJson(`${runtime.baseUrl}/api/dev/reset`, { stage: "contacting" });
+  const prepared = await postJson(`${runtime.baseUrl}/mcp`, {
+    jsonrpc: "2.0",
+    id: 7,
+    method: "tools/call",
+    params: {
+      name: "vendor_scout_prepare_rfqs",
+      arguments: { missionId: "mission-lidar-500" }
+    }
+  });
+  if (prepared.payload?.result?.isError) throw new Error(prepared.payload.result.content?.[0]?.text || "RFQ setup failed");
   const reply = {
     content: "ready offer",
     sourceReference: "gmail/ready",
