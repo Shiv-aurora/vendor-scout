@@ -806,7 +806,7 @@ function renderOverview() {
   const stats = `<dl class="panel stat-row">
     <div>
       <dt>Projected savings</dt>
-      <dd class="${savings ? "is-good" : ""}">${escapeHtml(money(data.summary.projectedSavings))}</dd>
+      <dd class="${savings ? "is-good" : ""}">${escapeHtml(money(savings))}</dd>
       <span class="stat-sub">${winner ? `on ${number(currentMission.quantity)} units vs ${escapeHtml(current.name)}` : "no comparable offer yet"}</span>
     </div>
     <div>
