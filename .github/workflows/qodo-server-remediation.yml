@@ -1,0 +1,38 @@
+name: Qodo Server Remediation
+
+on:
+  push:
+    branches:
+      - build/final-product-copy2
+    paths:
+      - .github/qodo-server-trigger.txt
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: build/final-product-copy2
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Apply server remediations
+        run: python scripts/apply_server_qodo_fixes.py
+      - name: Install
+        run: npm ci
+      - name: Validate full suite
+        run: npm run check
+      - name: Commit only after validation
+        run: |
+          git config user.name "vendor-scout-remediation"
+          git config user.email "actions@users.noreply.github.com"
+          git rm scripts/apply_server_qodo_fixes.py .github/workflows/qodo-server-remediation.yml .github/qodo-server-trigger.txt
+          git add server.mjs
+          git commit -m "fix remaining Qodo stack findings"
+          git push origin HEAD:build/final-product-copy2
