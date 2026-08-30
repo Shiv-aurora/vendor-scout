@@ -1,8 +1,8 @@
 # Status
 
-Current phase: **Phases 1–15, live TrueForge proof, cumulative Qodo remediation, and final integrated verification are complete.**
+Current phase: **Product implementation, live TrueForge proof, cumulative Qodo remediation, PR consolidation, and merge verification are complete.**
 
-Current objective: finish PR consolidation into `main`, verify `main`, then record the final three-minute demo and submit.
+Current objective: record the final three-minute demo using `docs/DEMO.md`, complete submission fields, and submit Vendor Scout.
 
 ## Product complete
 
@@ -37,13 +37,13 @@ The real integration was executed locally with TrueForge `0.1.4`, local Ollama `
 - Final controlled sample: one `USD 220` action, provider `controlled-sample-order`, `simulated=true`, `externalOrderId=null`, no external spend.
 - Live integration exposed and fixed a compatibility defect: TrueForge `0.1.4` requires `POST /api/v1/sessions` without the former trailing slash.
 
-## Qodo review — cumulative remediation complete
+## Qodo review — complete
 
-Representative integration PR:
+Representative reviewed and merged integration PR:
 
 <https://github.com/Shiv-aurora/vendor-scout/pull/5>
 
-PR #5 is now based directly on `main` and contains the cumulative product. It supersedes the earlier stacked PRs #2–#4.
+PR #5 was retargeted directly to `main` so Qodo reviewed the complete cumulative product rather than only the final stacked phase.
 
 ### Initial PR #5 review
 
@@ -58,12 +58,12 @@ Qodo found six material quote/approval/order issues. All six were fixed and regr
 
 ### Carried-forward #2–#4 review findings
 
-The earlier stacked Qodo findings were audited against the final architecture. Valid findings were fixed on the cumulative branch, including:
+Valid findings from the earlier stacked PRs were carried into the cumulative branch and fixed, including:
 
 - atomic researched-supplier ingestion;
 - MCP protocol/id-less request safety and candidate contract enforcement;
 - bounded TrueForge response handling;
-- explicit outreach provider success semantics;
+- explicit outreach-provider success semantics;
 - bounded outreach responses and `.example.` fixture protection;
 - normalized/replay-safe supplier replies;
 - quantity-tier-aware negotiation;
@@ -71,22 +71,18 @@ The earlier stacked Qodo findings were audited against the final architecture. V
 
 The older phase-local currency concern is addressed by the final architecture: foreign-currency offers may reach comparison, but cannot rank without a positive provenance-backed FX rate.
 
-### Fresh integrated review against main
+### Fresh cumulative review against main
 
-After PR #5 was retargeted to `main`, Qodo found four additional cumulative issues:
+Qodo then found four additional integrated issues:
 
 1. negotiation price precedence could ignore applicable tiers;
 2. MCP candidate runtime validation did not fully enforce known-field constraints;
 3. source-reference whitespace could defeat reply deduplication;
 4. oversized declared TrueForge/outreach responses were rejected without cancelling their unread body.
 
-All four were fixed on code head:
+All four were fixed on code head `27e18af2a32d42164c8c6639e9af2453abe89969` with focused regression coverage.
 
-`27e18af2a32d42164c8c6639e9af2453abe89969`
-
-The guarded remediation workflow `33298301853` ran the complete suite before committing and passed **86/86 tests, 0 failed**.
-
-Each integrated Qodo thread received a fix/test response. Qodo re-evaluated the cumulative branch and now reports:
+Qodo re-evaluated the cumulative branch and reported:
 
 - **Bugs (0)**
 - **Rule violations (0)**
@@ -96,36 +92,50 @@ Qodo live summary:
 
 <https://github.com/Shiv-aurora/vendor-scout/pull/5#issuecomment-5466842962>
 
-Final cumulative follow-up request:
+Final pre-merge confirmation request:
 
-<https://github.com/Shiv-aurora/vendor-scout/pull/5#issuecomment-5467303812>
+<https://github.com/Shiv-aurora/vendor-scout/pull/5#issuecomment-5467315003>
 
 Detailed evidence: [`docs/QODO_REVIEW.md`](QODO_REVIEW.md).
 
-## Final integrated verification
+## Integrated verification — complete
 
-User-authored verification head:
+Final PR head before merge:
 
-`276675a22f5f6620a8d9b5b8f4f4628432de6d0c`
+`58be169ee4281bbf7dd35824d8e1c1a6067c4f2c`
 
-This head contains the complete remediated runtime code plus the integrated Qodo evidence checkpoint.
+All four PR workflows passed on that exact head:
 
-All four normal workflows passed:
+- `Vendor Scout CI` run `33298561788`: **success**.
+- `Vendor Scout Decision Browser` run `33298561782`: **success**.
+- `Vendor Scout Outreach Browser` run `33298561768`: **success**.
+- `Vendor Scout Negotiation Browser` run `33298561770`: **success**.
 
-- `Vendor Scout CI` run `33298453129`: **success**.
-- `Vendor Scout Decision Browser` run `33298453202`: **success**.
-- `Vendor Scout Outreach Browser` run `33298453240`: **success**.
-- `Vendor Scout Negotiation Browser` run `33298453165`: **success**.
-
-`Vendor Scout CI` used Node `20.20.2` and reported:
+The preceding exact-head CI and guarded remediation established:
 
 - `npm ci`: zero vulnerabilities
 - `npm run check`: **86/86 tests passed, 0 failed**
 - runtime `/health` and `/api/dashboard` smoke passed
 - desktop/mobile Chromium smoke passed
-- browser-smoke artifact `9728150682` uploaded
 
-Subsequent README/status commits are documentation-only and do not alter runtime code. The PR workflows are still required to remain green on the final PR head before merge.
+## Merge / main verification — complete
+
+PR #5 merged into `main` on 2026-08-30.
+
+Merge commit:
+
+`2f7846aa7408e07b3704dc4f287ad919466b2ead`
+
+Post-merge `Vendor Scout CI` run `33298642714` completed **successfully** on that exact merge commit, including install, the full check suite, runtime smoke, desktop/mobile Chromium smoke, and browser evidence upload.
+
+PR stack cleanup:
+
+- PR #2 — closed, **not merged**, superseded by #5.
+- PR #3 — closed, **not merged**, superseded by #5.
+- PR #4 — closed, **not merged**, superseded by #5.
+- PR #5 — **merged** into `main`.
+
+Historical note: PR #1 was merged before Qodo review evidence existed; this cannot be retroactively changed and is not represented as reviewed work.
 
 ## Safety / production details
 
@@ -140,21 +150,19 @@ Subsequent README/status commits are documentation-only and do not alter runtime
 
 Current state contract: `2.5.0`. Known prior procurement contracts migrate non-destructively; unknown versions fail closed.
 
-## Repository / PR state
+## Repository state
 
-- Repository is **public** and includes an MIT license.
-- PR #5 is the cumulative open integration PR from `build/final-product-copy2` to `main`.
-- PRs #2–#4 are superseded by #5 and should be closed without merge after the final #5 gate is confirmed.
-- Historical note: PR #1 was merged before Qodo review evidence existed; this cannot be retroactively corrected and is not represented as reviewed.
+- Repository is **public**.
+- MIT license is present.
+- The complete product is now on **`main`**.
+- README contains the required `## Qodo Code Review Evidence` section linked to merged PR #5.
+- No temporary Qodo remediation workflow/script/trigger files remain in the final product tree.
 
-## Remaining gates
+## Remaining submission work
 
-1. Confirm all four normal workflows remain green on the final documentation head.
-2. Confirm Qodo has no new unresolved valid finding on the final cumulative PR.
-3. Close PRs #2–#4 as superseded without merging them.
-4. Merge PR #5 into `main` and verify `main` CI.
-5. Record the one-story demo in `docs/DEMO.md` and submit.
+No product-engineering phase remains.
 
-## Merge rule
-
-Merge only the cumulative, Qodo-clean PR #5. Do not individually merge the superseded stacked PRs #2–#4.
+1. Record the one-story demo using [`docs/DEMO.md`](DEMO.md).
+2. Add the final video link/screenshots where required by the submission form.
+3. Complete the short Devpost/WeMakeDevs writeup using the README framing.
+4. Submit before the hackathon deadline.
