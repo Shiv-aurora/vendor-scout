@@ -7,6 +7,7 @@ import { createSeed } from "../lib/seed.mjs";
 async function startMockTrueForge() {
   const requests = [];
   let getTurnCount = 0;
+  let turnPostCount = 0;
   const server = http.createServer(async (req, res) => {
     let body = "";
     for await (const chunk of req) body += chunk;
@@ -25,7 +26,8 @@ async function startMockTrueForge() {
       return send(200, { data: { id: "sess-vendor-scout" } });
     }
     if (req.method === "POST" && req.url === "/api/v1/sessions/sess-vendor-scout/turns") {
-      return send(200, { data: { id: "turn-1", state: { status: "running" } } });
+      turnPostCount += 1;
+      return send(200, { data: { id: turnPostCount === 1 ? "turn-1" : "turn-2", state: { status: "running" } } });
     }
     if (req.method === "GET" && req.url === "/api/v1/sessions/sess-vendor-scout/turns/turn-1") {
       getTurnCount += 1;
@@ -64,6 +66,15 @@ test("TrueForge adapter creates a named persistent session and non-streaming tur
   assert.equal(mock.requests[0].authorization, "Bearer id-token");
   assert.equal(mock.requests[1].body.stream, false);
   assert.equal(mock.requests[1].body.input[0].type, "user.message");
+
+  const resumed = await client.submitToolApprovals(session.id, [{ threadId: "thread-main", toolCallId: "call-order", status: "allow" }]);
+  assert.equal(resumed.id, "turn-2");
+  const approvalRequest = mock.requests.find(request => request.method === "POST" && request.body?.input?.[0]?.type === "user.tool_approval");
+  assert.ok(approvalRequest);
+  assert.deepEqual(approvalRequest.body, {
+    stream: false,
+    input: [{ type: "user.tool_approval", thread_id: "thread-main", tool_call_id: "call-order", approval: { status: "allow" } }]
+  });
 });
 
 test("mission prompt carries constraints and explicit approval boundary", () => {

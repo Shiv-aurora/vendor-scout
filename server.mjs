@@ -615,7 +615,55 @@ async function analyzeMissionQuotes(missionId, fxRates = []) {
   return missionSnapshot(missionId);
 }
 
-async function executeMissionAction(id, action) {
+function pendingTrueForgeApprovalRefs(requiredActions = []) {
+  const refs = [];
+  for (const action of requiredActions) {
+    if (action?.type !== "tool.approval_required") continue;
+    const threadId = action.threadId || action.thread_id;
+    const toolCalls = Array.isArray(action.toolCalls) ? action.toolCalls : Array.isArray(action.tool_calls) ? action.tool_calls : [];
+    if (!threadId) continue;
+    for (const ref of toolCalls) {
+      const toolCallId = ref?.id || ref?.toolCallId || ref?.tool_call_id;
+      if (toolCallId) refs.push({ threadId: String(threadId), toolCallId: String(toolCallId) });
+    }
+  }
+  return refs;
+}
+
+function normalizeTrueForgeApprovalPayload(requiredActions, approvals) {
+  const pending = pendingTrueForgeApprovalRefs(requiredActions);
+  if (!pending.length) throw httpError(409, "The last TrueForge turn has no pending tool approvals");
+  const otherRequired = (requiredActions || []).filter(action => action?.type !== "tool.approval_required");
+  if (otherRequired.length) throw httpError(409, "The TrueForge turn also has non-approval required actions; resolve the complete pause in the TrueForge UI");
+  if (!Array.isArray(approvals) || approvals.length !== pending.length) {
+    throw httpError(400, `Exactly ${pending.length} pending TrueForge tool approval decision${pending.length === 1 ? "" : "s"} must be supplied`);
+  }
+  const pendingKeys = new Set(pending.map(item => `${item.threadId}
+${item.toolCallId}`));
+  const seen = new Set();
+  const normalized = approvals.map((item, index) => {
+    const threadId = typeof item?.threadId === "string" ? item.threadId.trim() : "";
+    const toolCallId = typeof item?.toolCallId === "string" ? item.toolCallId.trim() : "";
+    const status = item?.status;
+    if (!threadId || !toolCallId) throw httpError(400, `approvals[${index}] requires threadId and toolCallId`);
+    if (!["allow", "deny"].includes(status)) throw httpError(400, `approvals[${index}].status must be allow or deny`);
+    const key = `${threadId}
+${toolCallId}`;
+    if (!pendingKeys.has(key)) throw httpError(409, `Approval ${toolCallId} is not pending on the last TrueForge turn`);
+    if (seen.has(key)) throw httpError(400, `Duplicate approval decision for ${toolCallId}`);
+    seen.add(key);
+    return {
+      threadId,
+      toolCallId,
+      status,
+      ...(typeof item.reason === "string" && item.reason.trim() ? { reason: item.reason.trim().slice(0, 2000) } : {})
+    };
+  });
+  if (seen.size !== pendingKeys.size) throw httpError(400, "Every pending TrueForge tool approval must receive exactly one decision");
+  return normalized;
+}
+
+async function executeMissionAction(id, action, payload = {}) {
   const mission = state.missions.find(item => item.id === id);
   if (!mission) throw httpError(404, "Sourcing mission not found");
   const missionErrors = validateMission(mission);
@@ -699,6 +747,7 @@ async function executeMissionAction(id, action) {
     requireTrueForgeConfigured();
     if (!mission.trueForge?.sessionId) throw httpError(409, "Connect a TrueForge session before starting a turn");
     if (mission.trueForge.lastTurn?.status === "running") throw httpError(409, "A TrueForge turn is already running for this mission");
+    if (mission.trueForge.lastTurn?.requiredActions?.length) throw httpError(409, "Resolve the pending TrueForge required actions before starting another normal turn");
     const suppliers = state.supplierCandidates.filter(candidate => candidate.missionId === id);
     const activity = state.activity.filter(item => item.missionId === id);
     const turn = await trueForge.createTurn(mission.trueForge.sessionId, missionTurnPrompt(mission, { suppliers, activity }));
@@ -723,6 +772,21 @@ async function executeMissionAction(id, action) {
       const required = summary.requiredActions.length ? ` · ${summary.requiredActions.length} action${summary.requiredActions.length === 1 ? "" : "s"} require attention` : "";
       addActivity(id, "agent", `TrueForge turn ${summary.status}`, `Turn ${summary.id} changed from ${previousStatus} to ${summary.status}${required}.`);
     }
+  } else if (action === "resume_trueforge_approval") {
+    requireTrueForgeConfigured();
+    const lastTurn = mission.trueForge?.lastTurn;
+    if (!mission.trueForge?.sessionId || !lastTurn?.id) throw httpError(409, "No TrueForge turn exists for this mission");
+    if (lastTurn.status === "running") throw httpError(409, "The TrueForge turn is still running; sync it before resolving an approval");
+    const approvals = normalizeTrueForgeApprovalPayload(lastTurn.requiredActions, payload.approvals);
+    const resumedFrom = lastTurn.id;
+    const turn = await trueForge.submitToolApprovals(mission.trueForge.sessionId, approvals);
+    const summary = summarizeTurn(turn);
+    const now = new Date().toISOString();
+    mission.trueForge.lastTurn = { ...summary, resumedFrom, startedAt: now, syncedAt: now };
+    mission.updatedAt = now;
+    const allowed = approvals.filter(item => item.status === "allow").length;
+    const denied = approvals.length - allowed;
+    addActivity(id, "agent", "TrueForge approval decisions submitted", `${allowed} allowed · ${denied} denied · resumed from turn ${resumedFrom} as ${summary.id}.`);
   } else {
     throw httpError(400, `Unsupported mission action: ${action || "missing"}`);
   }
@@ -895,7 +959,7 @@ export async function handleRequest(req, res) {
       if (!isAgentAuthorized(req)) return json(res, configuredAgentToken ? 401 : 503, { error: configuredAgentToken ? "Agent authorization required" : "Agent mutation API is disabled until VENDOR_SCOUT_AGENT_TOKEN is configured" });
       const id = decodeURIComponent(actionMatch[1]);
       const body = await readJsonBody(req);
-      const result = await serializeMutation(() => executeMissionAction(id, body.action));
+      const result = await serializeMutation(() => executeMissionAction(id, body.action, body));
       return json(res, 200, result);
     }
 

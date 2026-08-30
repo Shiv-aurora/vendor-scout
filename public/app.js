@@ -201,7 +201,8 @@ function renderTrueForge(currentMission, localActions) {
   const controls = [];
 
   if (localActions && configured && !connected) controls.push('<button class="primary-button" data-agent-action="connect_trueforge">Connect TrueForge session</button>');
-  if (localActions && configured && connected && lastTurn?.status !== "running") controls.push('<button class="primary-button" data-agent-action="start_trueforge_turn">Run TrueForge turn</button>');
+  if (localActions && configured && connected && lastTurn?.status !== "running" && requiredCount === 0) controls.push('<button class="primary-button" data-agent-action="start_trueforge_turn">Run TrueForge turn</button>');
+  if (connected && requiredCount > 0) controls.push('<span class="provider-pill critical">Resolve required action in TrueForge</span>');
   if (localActions && configured && connected && lastTurn?.id) controls.push('<button class="button light" data-agent-action="sync_trueforge_turn">Sync turn state</button>');
 
   const stateText = !configured

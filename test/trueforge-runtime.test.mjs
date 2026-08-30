@@ -24,6 +24,7 @@ async function freePort() {
 
 async function startMockTrueForge() {
   let getTurnCount = 0;
+  let turnPostCount = 0;
   const server = http.createServer(async (req, res) => {
     let raw = "";
     for await (const chunk of req) raw += chunk;
@@ -39,21 +40,36 @@ async function startMockTrueForge() {
     }
     if (req.method === "GET" && req.url === "/api/v1/sessions/sess-42") return send(200, { data: { id: "sess-42" } });
     if (req.method === "POST" && req.url === "/api/v1/sessions/sess-42/turns") {
+      turnPostCount += 1;
       assert.equal(body.stream, false);
-      assert.equal(body.input[0].type, "user.message");
-      assert.match(body.input[0].content, /human approval/);
-      return send(200, { data: { id: "turn-42", state: { status: "running" } } });
+      if (turnPostCount === 1) {
+        assert.equal(body.input[0].type, "user.message");
+        assert.match(body.input[0].content, /human approval/);
+        return send(200, { data: { id: "turn-42", state: { status: "running" } } });
+      }
+      assert.deepEqual(body.input, [{ type: "user.tool_approval", thread_id: "thread-main", tool_call_id: "call-sample", approval: { status: "allow" } }]);
+      return send(200, { data: { id: "turn-43", state: { status: "running" } } });
     }
     if (req.method === "GET" && req.url === "/api/v1/sessions/sess-42/turns/turn-42") {
       getTurnCount += 1;
       return send(200, {
         data: {
           id: "turn-42",
-          state: getTurnCount > 0
-            ? { status: "done", output: { content: "Qualified suppliers are ready for RFQ outreach." }, requiredActions: [] }
-            : { status: "running" }
+          state: {
+            status: "done",
+            output: null,
+            required_actions: [{
+              id: "approval-event-1",
+              type: "tool.approval_required",
+              thread_id: "thread-main",
+              tool_calls: [{ id: "call-sample", source_event_id: "model-message-1" }]
+            }]
+          }
         }
       });
+    }
+    if (req.method === "GET" && req.url === "/api/v1/sessions/sess-42/turns/turn-43") {
+      return send(200, { data: { id: "turn-43", state: { status: "done", output: { content: "Approved tool execution completed." }, required_actions: [] } } });
     }
     return send(404, { message: "not found" });
   });
@@ -90,15 +106,15 @@ async function stop(child) {
   await Promise.race([new Promise(resolve => child.once("exit", resolve)), sleep(1000)]);
 }
 
-async function postAction(baseUrl, action) {
+async function postAction(baseUrl, action, extra = {}, expectedStatus = 200) {
   const response = await fetch(`${baseUrl}/api/missions/mission-lidar-500/actions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action })
+    body: JSON.stringify({ action, ...extra })
   });
   const body = await response.json();
-  assert.equal(response.status, 200, body.error);
-  return body.dashboard;
+  assert.equal(response.status, expectedStatus, body.error);
+  return body;
 }
 
 test("Vendor Scout persists TrueForge session and turn state on the sourcing mission", async t => {
@@ -124,17 +140,41 @@ test("Vendor Scout persists TrueForge session and turn state on the sourcing mis
   assert.equal(capabilities.trueForge.agentName, "vendor-scout");
   assert.equal(capabilities.trueForge.endpoint, trueForge.baseUrl);
 
-  let dashboard = await postAction(runtime.baseUrl, "connect_trueforge");
+  let result = await postAction(runtime.baseUrl, "connect_trueforge");
+  let dashboard = result.dashboard;
   assert.equal(dashboard.missions[0].trueForge.sessionId, "sess-42");
   assert.equal(dashboard.missions[0].trueForge.agentName, "vendor-scout");
 
-  dashboard = await postAction(runtime.baseUrl, "start_trueforge_turn");
+  result = await postAction(runtime.baseUrl, "start_trueforge_turn");
+  dashboard = result.dashboard;
   assert.equal(dashboard.missions[0].trueForge.lastTurn.id, "turn-42");
   assert.equal(dashboard.missions[0].trueForge.lastTurn.status, "running");
 
-  dashboard = await postAction(runtime.baseUrl, "sync_trueforge_turn");
+  result = await postAction(runtime.baseUrl, "sync_trueforge_turn");
+  dashboard = result.dashboard;
   assert.equal(dashboard.missions[0].trueForge.lastTurn.status, "done");
-  assert.match(dashboard.missions[0].trueForge.lastTurn.content, /RFQ outreach/);
+  assert.equal(dashboard.missions[0].trueForge.lastTurn.requiredActions.length, 1);
+
+  result = await postAction(runtime.baseUrl, "start_trueforge_turn", {}, 409);
+  assert.match(result.error, /Resolve the pending TrueForge required actions/);
+
+  result = await postAction(runtime.baseUrl, "resume_trueforge_approval", {
+    approvals: [{ threadId: "thread-main", toolCallId: "not-pending", status: "allow" }]
+  }, 409);
+  assert.match(result.error, /not pending/);
+
+  result = await postAction(runtime.baseUrl, "resume_trueforge_approval", {
+    approvals: [{ threadId: "thread-main", toolCallId: "call-sample", status: "allow" }]
+  });
+  dashboard = result.dashboard;
+  assert.equal(dashboard.missions[0].trueForge.lastTurn.id, "turn-43");
+  assert.equal(dashboard.missions[0].trueForge.lastTurn.status, "running");
+  assert.equal(dashboard.missions[0].trueForge.lastTurn.resumedFrom, "turn-42");
+
+  result = await postAction(runtime.baseUrl, "sync_trueforge_turn");
+  dashboard = result.dashboard;
+  assert.equal(dashboard.missions[0].trueForge.lastTurn.status, "done");
+  assert.match(dashboard.missions[0].trueForge.lastTurn.content, /Approved tool execution completed/);
   assert.ok(dashboard.activity.some(item => item.title === "TrueForge session connected"));
-  assert.ok(dashboard.activity.some(item => item.title === "TrueForge turn done"));
+  assert.ok(dashboard.activity.some(item => item.title === "TrueForge approval decisions submitted"));
 });
