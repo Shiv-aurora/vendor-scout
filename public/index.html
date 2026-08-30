@@ -8,7 +8,7 @@
   <title>Vendor Scout — Autonomous hardware procurement</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23b9f45f'/%3E%3Ctext x='7' y='23' font-size='18' font-family='Arial' font-weight='700' fill='%2307100d'%3EVS%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/styles.css?v=vendor-scout-2">
-  <link rel="stylesheet" href="/procurement.css?v=vendor-scout-4">
+  <link rel="stylesheet" href="/procurement.css?v=vendor-scout-5">
 </head>
 <body>
   <div id="landing">
@@ -55,7 +55,7 @@
         <div class="stage-grid">
           <article class="stage-card active"><span>01</span><h3>Source the market</h3><p>The sourcing mission is persistent and executable. Discovery can run through a configured provider, with a controlled fallback for demo reliability.</p><div class="mini-map impact"><b>Evidence + provenance</b><small>Not a static supplier list</small></div></article>
           <article class="stage-card"><span>02</span><h3>Screen the candidates</h3><p>Qualification evaluates region, confidence, technical match, lead time, MOQ, and commercial plausibility against the mission.</p><div class="mini-map recovered"><b>Explicit decisions</b><small>Qualified · review · rejected</small></div></article>
-          <article class="stage-card"><span>03</span><h3>Stop at commitment</h3><p>Qualified suppliers become persistent RFQ threads. Vendor Scout can deliver non-binding RFQs through an idempotent transport, persist replies, and move into negotiation while commitments remain human-gated.</p><div class="mini-map risk"><b>Human approval required</b><small>Before sample procurement</small></div></article>
+          <article class="stage-card"><span>03</span><h3>Stop at commitment</h3><p>Qualified suppliers become persistent RFQ threads. Vendor Scout can deliver non-binding RFQs, persist supplier replies, extract only explicit offer terms, and run retry-safe non-binding counter rounds while commitments remain human-gated.</p><div class="mini-map risk"><b>Human approval required</b><small>Before sample procurement</small></div></article>
         </div>
       </section>
 
@@ -66,12 +66,12 @@
 
       <section class="how-section" id="trueforge">
         <div class="section-label"><i></i> TrueForge orchestration boundary</div>
-        <div class="section-heading"><h2>Vendor Scout already implements the persistent TrueForge session and seven-tool MCP boundary; a live external TrueForge runtime is the remaining configuration step.</h2></div>
+        <div class="section-heading"><h2>Vendor Scout already implements the persistent TrueForge session and ten-tool sourcing, outreach, and negotiation MCP boundary; a live external TrueForge runtime is the remaining configuration step.</h2></div>
         <div class="how-flow"><article><span>01</span><h3>Mission</h3><p>Persist procurement objectives and hard constraints.</p></article><i>→</i><article><span>02</span><h3>Agent + tools</h3><p>Attach TrueForge to the existing discovery, qualification, outreach, and negotiation action boundary.</p></article><i>→</i><article><span>03</span><h3>Analysis</h3><p>Normalize quotes and compute fair landed-cost comparisons in a sandbox.</p></article><i>→</i><article><span>04</span><h3>Approval</h3><p>Pause at consequential actions and resume only after the human decides.</p></article></div>
       </section>
 
       <section class="preview-section">
-        <div class="preview-copy"><div class="section-label"><i></i> Current executable build</div><h2>Discovery, qualification, and RFQ outreach now run through one persistent sourcing mission.</h2><p id="landing-build-state">Loading current mission stage</p><button class="button light enter-app">Open Command Center</button></div>
+        <div class="preview-copy"><div class="section-label"><i></i> Current executable build</div><h2>Discovery, qualification, RFQ outreach, and evidence-backed counter negotiation now run through one persistent sourcing mission.</h2><p id="landing-build-state">Loading current mission stage</p><button class="button light enter-app">Open Command Center</button></div>
         <div class="product-window"><header><a class="mini-brand"><span>VS</span></a><strong>Atlas Robotics · LiDAR sourcing</strong><small>Persistent sourcing mission</small></header><div class="window-grid"><article class="score-card"><span>Mission</span><strong>500<small> units</small></strong><p>One procurement objective and one approval boundary.</p></article><article class="stat-card"><span>Target</span><strong>$390</strong><small>Per unit</small></article><article class="stat-card"><span>Lead time</span><strong>21d</strong><small>Maximum</small></article><article class="stat-card"><span>Sample budget</span><strong>$500</strong><small>Human-gated spend</small></article></div></div>
       </section>
 
@@ -150,6 +150,6 @@ Reject</pre></article>
     <div class="toast" id="toast" role="status"></div>
   </div>
 
-  <script type="module" src="/app.js?v=vendor-scout-4"></script>
+  <script type="module" src="/app.js?v=vendor-scout-5"></script>
 </body>
 </html>
