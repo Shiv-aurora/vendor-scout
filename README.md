@@ -187,6 +187,17 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+Startup state is selected explicitly with `VENDOR_SCOUT_SEED_MODE`. The default
+is `draft`. The controlled hackathon presentation uses `approval-ready`, which
+starts at a populated recommendation with a pending human decision; it does not
+approve or execute a sample order.
+
+```bash
+VENDOR_SCOUT_SEED_MODE=approval-ready \
+VENDOR_SCOUT_DATA_PATH=/tmp/vendor-scout-public-demo.json \
+npm start
+```
+
 ### Jump directly to the decision climax
 
 With the local server running:
