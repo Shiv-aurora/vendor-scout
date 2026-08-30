@@ -1417,19 +1417,21 @@ function decisionBlock(context, options) {
 
   // Pending decision: the three human actions sit immediately under the numbers.
   if (approval?.status === "pending") {
-    const actions = localActions
-      ? `<div class="decide-actions">
-          ${canApproveSample ? `<button class="btn btn-lg btn-accent" data-approval-decision="approve">Approve sample · ${escapeHtml(money2(samplePrice))}</button>` : ""}
-          <button class="btn btn-lg btn-ghost" data-approval-decision="negotiate_more">Send back to negotiate</button>
-          <button class="btn btn-lg btn-danger" data-approval-decision="reject">Reject</button>
-        </div>
-        <p class="decide-guard">
-          ${canApproveSample
-            ? `<b>Approving buys one ${escapeHtml(money2(samplePrice))} evaluation sample.</b> It does not place the ${escapeHtml(money(winner.landedCost?.base))} production order or accept ${escapeHtml(winner.supplierName)}'s terms.`
-            : "<b>No orderable in-budget sample is available.</b> Vendor Scout will not allow an approval without an executable action, so only negotiating further or rejecting is possible."}
-          Sending it back re-opens negotiation against the mission target of ≤ ${escapeHtml(money2(currentMission.constraints.targetUnitPrice))} per unit.
-        </p>`
-      : `<p class="decide-guard"><b>Decisions are recorded through the agent API in this runtime.</b> The three human options are approve the sample, send the mission back to negotiation, or reject the recommendation.</p>`;
+    const decisionAttribute = decision => localActions
+      ? `data-approval-decision="${decision}"`
+      : 'disabled aria-disabled="true" title="Secure agent authorization required"';
+    const actions = `<div class="decide-actions">
+        ${canApproveSample ? `<button class="btn btn-lg btn-accent" ${decisionAttribute("approve")}>Approve sample · ${escapeHtml(money2(samplePrice))}</button>` : ""}
+        <button class="btn btn-lg btn-ghost" ${decisionAttribute("negotiate_more")}>Send back to negotiate</button>
+        <button class="btn btn-lg btn-danger" ${decisionAttribute("reject")}>Reject</button>
+      </div>
+      <p class="decide-guard">
+        ${localActions
+          ? canApproveSample
+            ? `<b>Approving buys one ${escapeHtml(money2(samplePrice))} evaluation sample.</b> It does not place the ${escapeHtml(money(winner.landedCost?.base))} production order or accept ${escapeHtml(winner.supplierName)}'s terms. Sending it back re-opens negotiation against the mission target of ≤ ${escapeHtml(money2(currentMission.constraints.targetUnitPrice))} per unit.`
+            : `<b>No orderable in-budget sample is available.</b> Vendor Scout will not allow an approval without an executable action, so only negotiating further or rejecting is possible. Sending it back re-opens negotiation against the mission target of ≤ ${escapeHtml(money2(currentMission.constraints.targetUnitPrice))} per unit.`
+          : "<b>Public demo controls are read-only.</b> The decision remains pending, and secure agent authorization is required to record approve, negotiate, or reject."}
+      </p>`;
 
     return `<article class="decide">
       <div class="decide-top">

@@ -23,3 +23,15 @@ test("mobile navigation rail spans the viewport", () => {
   assert.match(rail, /inset:\s*auto 0 0 0;/);
   assert.match(rail, /width:\s*auto;/);
 });
+
+test("public approval packet keeps all human choices visible without enabling browser mutations", () => {
+  const start = appSource.indexOf("// Pending decision: the three human actions sit immediately under the numbers.");
+  assert.notEqual(start, -1, "pending approval rendering must exist");
+  const approval = appSource.slice(start, start + 4000);
+
+  assert.match(approval, /Approve sample/);
+  assert.match(approval, /Send back to negotiate/);
+  assert.match(approval, />Reject</);
+  assert.match(approval, /disabled aria-disabled="true" title="Secure agent authorization required"/);
+  assert.match(approval, /Public demo controls are read-only/);
+});
