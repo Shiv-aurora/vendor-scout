@@ -9,6 +9,7 @@ import { qualifySupplier, transitionMission, validateMission } from "./lib/domai
 import { handleMcpMessage, PROCUREMENT_MCP_TOOLS } from "./lib/mcp.mjs";
 import { migrateState } from "./lib/migrations.mjs";
 import { latestOffer, markCounterAccepted, prepareCounter as prepareNegotiationCounter, recordOfferTerms } from "./lib/negotiation.mjs";
+import { analyzeQuotes as computeQuoteAnalysis } from "./lib/quotes.mjs";
 import {
   createRfqConversation,
   deliverRfq,
@@ -144,7 +145,12 @@ function dashboard() {
   const qualified = state.supplierCandidates.filter(candidate => candidate.status === "qualified");
   const negotiationsActive = state.conversations.filter(conversation => ["supplier_replied", "negotiating", "counter_draft", "counter_sending", "counter_sent", "counter_previewed", "counter_delivery_failed"].includes(conversation.status)).length;
   const approvalsWaiting = state.approvals.filter(approval => approval.status === "pending").length;
-  const projectedSavings = Math.max(0, ...qualified.map(candidate => candidate.projectedSavings || 0));
+  const latestRecommendation = [...state.recommendations].reverse().find(recommendation => activeMissions.some(mission => mission.id === recommendation.missionId)) || null;
+  const recommendedQuote = latestRecommendation ? state.quotes.find(quote => quote.id === latestRecommendation.quoteId) : null;
+  const analyzedSavings = recommendedQuote?.economics?.estimatedLandedSavingsBase ?? recommendedQuote?.economics?.savingsBeforeShippingBase;
+  const projectedSavings = Number.isFinite(analyzedSavings)
+    ? Math.max(0, analyzedSavings)
+    : Math.max(0, ...qualified.map(candidate => candidate.projectedSavings || 0));
   const contacted = new Set(state.conversations.filter(conversationHasExternalContact).map(conversation => conversation.supplierId));
 
   return {
@@ -414,6 +420,68 @@ async function sendPreparedCounter(missionId, supplierId) {
   return missionSnapshot(missionId);
 }
 
+function quoteAnalysisSignature(analysis) {
+  return JSON.stringify({
+    quotes: analysis.quotes.map(quote => ({
+      id: quote.id,
+      sourceOfferId: quote.sourceOfferId,
+      fx: quote.fx,
+      knownTotal: quote.knownTotal,
+      landedCost: quote.landedCost,
+      score: quote.score,
+      rank: quote.rank
+    })),
+    recommendation: analysis.recommendation,
+    blockers: analysis.blockers
+  });
+}
+
+async function analyzeMissionQuotes(missionId, fxRates = []) {
+  const mission = state.missions.find(item => item.id === missionId);
+  if (!mission) throw httpError(404, "Sourcing mission not found");
+  requireOneOfStatuses(mission, ["negotiating", "comparing"], "analyze quotes");
+  const candidates = state.supplierCandidates.filter(candidate => candidate.missionId === missionId);
+  const conversations = state.conversations.filter(conversation => conversation.missionId === missionId);
+  const analysis = computeQuoteAnalysis(mission, candidates, conversations, { fxRates });
+  const signature = quoteAnalysisSignature(analysis);
+  const changed = mission.execution?.quoteAnalysisSignature !== signature;
+
+  state.quotes = [
+    ...state.quotes.filter(quote => quote.missionId !== missionId),
+    ...analysis.quotes
+  ];
+  state.recommendations = state.recommendations.filter(recommendation => recommendation.missionId !== missionId);
+  if (analysis.recommendation) state.recommendations.push(analysis.recommendation);
+
+  if (analysis.recommendation && mission.status === "negotiating") {
+    mission.status = transitionMission(mission.status, "negotiation_complete");
+  }
+  mission.updatedAt = new Date().toISOString();
+  mission.execution = {
+    ...(mission.execution || {}),
+    analysisReady: Boolean(analysis.recommendation),
+    analysisAt: analysis.analyzedAt,
+    analysisBaseCurrency: analysis.baseCurrency,
+    analysisBlockers: analysis.blockers,
+    quoteAnalysisSignature: signature
+  };
+
+  if (changed) {
+    if (analysis.recommendation) {
+      addActivity(
+        missionId,
+        "compare",
+        `Quote analysis recommends ${analysis.recommendation.supplierName}`,
+        `${analysis.quotes.filter(quote => quote.rank).length} comparable offer${analysis.quotes.filter(quote => quote.rank).length === 1 ? "" : "s"} ranked · recommendation is ${analysis.recommendation.status} · human approval still required.`
+      );
+    } else {
+      addActivity(missionId, "compare", "Quote analysis blocked", analysis.blockers.join("; "));
+    }
+  }
+  await persist();
+  return missionSnapshot(missionId);
+}
+
 async function executeMissionAction(id, action) {
   const mission = state.missions.find(item => item.id === id);
   if (!mission) throw httpError(404, "Sourcing mission not found");
@@ -631,6 +699,10 @@ async function mcpSendCounter(id, supplierId) {
   return serializeMutation(() => sendPreparedCounter(id, supplierId));
 }
 
+async function mcpAnalyzeQuotes(id, fxRates) {
+  return serializeMutation(() => analyzeMissionQuotes(id, fxRates));
+}
+
 const mcpContext = {
   getMission: async id => missionSnapshot(id),
   discoverSuppliers: mcpDiscoverMission,
@@ -641,7 +713,8 @@ const mcpContext = {
   recordReply: mcpRecordReply,
   recordOffer: mcpRecordOffer,
   prepareCounter: mcpPrepareCounter,
-  sendCounter: mcpSendCounter
+  sendCounter: mcpSendCounter,
+  analyzeQuotes: mcpAnalyzeQuotes
 };
 
 export async function handleRequest(req, res) {
@@ -719,6 +792,15 @@ export async function handleRequest(req, res) {
         if (body.action === "send") return sendPreparedCounter(missionId, supplierId);
         throw httpError(400, "Counter action must be prepare or send");
       });
+      return json(res, 200, snapshot);
+    }
+
+    const analysisMatch = url.pathname.match(/^\/api\/missions\/([^/]+)\/analysis$/);
+    if (analysisMatch && req.method === "POST") {
+      if (!isAgentAuthorized(req)) return json(res, configuredAgentToken ? 401 : 503, { error: configuredAgentToken ? "Agent authorization required" : "Agent mutation API is disabled until VENDOR_SCOUT_AGENT_TOKEN is configured" });
+      const missionId = decodeURIComponent(analysisMatch[1]);
+      const body = await readJsonBody(req, 128 * 1024);
+      const snapshot = await serializeMutation(() => analyzeMissionQuotes(missionId, Array.isArray(body.fxRates) ? body.fxRates : []));
       return json(res, 200, snapshot);
     }
 
