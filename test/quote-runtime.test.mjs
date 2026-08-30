@@ -138,7 +138,13 @@ test("Phase 8 persists normalized quotes, ranks offers, and stops before approva
   await recordReadyOffer(runtime, 20, supplierIds[1], { source: "quote-b", price: 382, lead: 14, shipping: 1300 });
 
   let snapshot = await mcp(runtime.baseUrl, 30, "vendor_scout_analyze_quotes", { missionId: "mission-lidar-500" });
-  assert.equal(snapshot.mission.status, "comparing");
+  assert.equal(snapshot.mission.status, "comparing", JSON.stringify({
+    status: snapshot.mission.status,
+    execution: snapshot.mission.execution,
+    quotes: snapshot.quotes?.map(quote => ({ supplier: quote.supplierName, knownTotal: quote.knownTotal, landedCost: quote.landedCost, completeness: quote.completeness, score: quote.score, rank: quote.rank })),
+    recommendation: snapshot.recommendations?.[0] || null,
+    conversations: snapshot.conversations?.map(conversation => ({ supplier: conversation.supplierName, status: conversation.status, evaluation: conversation.negotiation?.latestEvaluation }))
+  }, null, 2));
   assert.equal(snapshot.mission.execution.analysisReady, true);
   assert.equal(snapshot.quotes.length, 2);
   assert.equal(snapshot.recommendations.length, 1);
