@@ -21,7 +21,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - name: Render controlled outreach conversation
+      - name: Render controlled outreach negotiation view
         run: |
           export VENDOR_SCOUT_DATA_PATH=/tmp/vendor-scout-outreach-browser.json
           export TRUEFORGE_BASE_URL=
@@ -50,13 +50,13 @@ jobs:
 
           "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --virtual-time-budget=3500 --window-size=1440,1200 --dump-dom 'http://127.0.0.1:3000/#app/conversations' > /tmp/vendor-scout-conversations-desktop.html
           grep '<section class="view active" id="view-conversations">' /tmp/vendor-scout-conversations-desktop.html
-          grep '<h1 id="page-title">Conversations</h1>' /tmp/vendor-scout-conversations-desktop.html
+          grep '<h1 id="page-title">Negotiations</h1>' /tmp/vendor-scout-conversations-desktop.html
           grep 'Controlled preview — no email sent' /tmp/vendor-scout-conversations-desktop.html
-          grep 'preview only · no external message was sent' /tmp/vendor-scout-conversations-desktop.html
-          grep 'View RFQ' /tmp/vendor-scout-conversations-desktop.html
-          grep 'No supplier reply recorded yet' /tmp/vendor-scout-conversations-desktop.html
+          grep 'controlled preview · no email sent' /tmp/vendor-scout-conversations-desktop.html
+          grep 'View full message' /tmp/vendor-scout-conversations-desktop.html
+          grep 'RFQ means a non-binding request for a quote' /tmp/vendor-scout-conversations-desktop.html
           if grep -q "Cannot set properties of null" /tmp/vendor-scout-conversations-desktop.html; then
-            echo "Conversation render crashed"
+            echo "Negotiation render crashed"
             exit 1
           fi
           if grep -q 'id="workspace-error"[^>]*>[^<]' /tmp/vendor-scout-conversations-desktop.html; then

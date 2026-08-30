@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="28 31 344 344" role="img" aria-label="Vendor Scout">
+  <title>Vendor Scout</title>
+  <g fill="none" stroke="#001f45" stroke-width="56" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M76 88 L200 318"/>
+    <path d="M324 88 L200 318"/>
+  </g>
+  <g fill="#b9f45f">
+    <rect x="148" y="137" width="104" height="18" rx="9"/>
+    <rect x="181" y="203" width="38" height="18" rx="9"/>
+    <circle cx="200" cy="322" r="15"/>
+  </g>
+</svg>

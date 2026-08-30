@@ -46,11 +46,11 @@ jobs:
 
           "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --virtual-time-budget=3500 --window-size=1440,1500 --dump-dom 'http://127.0.0.1:3000/#app/approvals' > /tmp/decision-pending.html
           grep '<section class="view active" id="view-approvals">' /tmp/decision-pending.html
-          grep 'VENDOR SCOUT RECOMMENDS' /tmp/decision-pending.html
+          grep 'recommended supplier' /tmp/decision-pending.html
           grep 'Human decision required' /tmp/decision-pending.html
           grep 'Approve sample' /tmp/decision-pending.html
-          grep 'Complete landed cost' /tmp/decision-pending.html
-          grep 'Deterministic scoring' /tmp/decision-pending.html
+          grep 'What this saves' /tmp/decision-pending.html
+          grep 'Scored offers' /tmp/decision-pending.html
           if grep -q 'id="workspace-error"[^>]*>[^<]' /tmp/decision-pending.html; then echo "Workspace error visible"; exit 1; fi
           "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --window-size=1440,1500 --screenshot=/tmp/decision-pending-desktop.png 'http://127.0.0.1:3000/#app/approvals'
           "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --window-size=390,844 --screenshot=/tmp/decision-pending-mobile.png 'http://127.0.0.1:3000/#app/approvals'
@@ -76,7 +76,7 @@ jobs:
 
           "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --virtual-time-budget=3000 --window-size=1440,1200 --dump-dom 'http://127.0.0.1:3000/#app/approvals' > /tmp/decision-completed.html
           grep 'Controlled sample action' /tmp/decision-completed.html
-          grep 'no external spend occurred' /tmp/decision-completed.html
+          grep 'No external spend occurred' /tmp/decision-completed.html
           "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --window-size=1440,1200 --screenshot=/tmp/decision-completed-desktop.png 'http://127.0.0.1:3000/#app/approvals'
       - name: Upload decision browser evidence
         uses: actions/upload-artifact@v4
