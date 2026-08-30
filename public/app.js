@@ -294,7 +294,7 @@ function renderConversations() {
 
   const contractPanel = $("#view-conversations .contract-panel");
   if (contractPanel) {
-    contractPanel.innerHTML = `<div><p class="eyebrow">PERSISTENT RFQ WORKFLOW</p><h2>${qualified.length} qualified supplier${qualified.length === 1 ? "" : "s"} can enter RFQ.</h2><p>Vendor Scout prepares a non-binding request, persists the thread before delivery, sends through an idempotent transport, and stores supplier replies with provenance.</p></div><pre>RFQ draft → external delivery
+    contractPanel.innerHTML = `<div><p class="eyebrow">PERSISTENT RFQ WORKFLOW</p><h2><span id="conversation-ready-count">${qualified.length}</span> qualified supplier${qualified.length === 1 ? "" : "s"} can enter RFQ.</h2><p>Vendor Scout prepares a non-binding request, persists the thread before delivery, sends through an idempotent transport, and stores supplier replies with provenance.</p></div><pre>RFQ draft → external delivery
 → supplier reply → term extraction
 → negotiate → compare → approval</pre>`;
   }
