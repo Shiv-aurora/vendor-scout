@@ -51,6 +51,7 @@ test("approval-ready seed is contract-valid and stops at one pending human decis
     const messageTimes = conversation.messages.map(message => Date.parse(message.createdAt));
     assert.ok(messageTimes.every((value, index) => index === 0 || value >= messageTimes[index - 1]), "conversation messages must not move backward");
     assert.ok(Date.parse(conversation.negotiation.latestEvaluation.evaluatedAt) >= Math.max(...messageTimes));
+    assert.equal(conversation.updatedAt, conversation.negotiation.latestEvaluation.evaluatedAt);
     assert.ok(Date.parse(conversation.updatedAt) >= Math.max(...messageTimes));
   }
 });
