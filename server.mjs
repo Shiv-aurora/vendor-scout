@@ -431,7 +431,20 @@ function quoteAnalysisSignature(analysis) {
       score: quote.score,
       rank: quote.rank
     })),
-    offerEvaluations: analysis.offerEvaluations,
+    offerEvaluations: analysis.offerEvaluations.map(item => ({
+      supplierId: item.supplierId,
+      conversationId: item.conversationId,
+      offerId: item.offerId,
+      evaluation: {
+        offerId: item.evaluation.offerId,
+        supplierId: item.evaluation.supplierId,
+        status: item.evaluation.status,
+        targetCurrency: item.evaluation.targetCurrency,
+        competitorBenchmark: item.evaluation.competitorBenchmark,
+        gaps: item.evaluation.gaps,
+        missingFields: item.evaluation.missingFields
+      }
+    })),
     recommendation: analysis.recommendation ? {
       id: analysis.recommendation.id,
       quoteId: analysis.recommendation.quoteId,
