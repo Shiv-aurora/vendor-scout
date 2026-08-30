@@ -415,7 +415,10 @@ function latestForMission(items, missionId) {
 
 function decisionButtonMarkup(localActions, status, approval) {
   if (!localActions || status !== "awaiting_approval" || approval?.status !== "pending") return "";
-  return `<div class="decision-actions"><button class="primary-button" data-approval-decision="approve">Approve sample</button><button class="button light" data-approval-decision="negotiate_more">Keep negotiating</button><button class="button danger-button" data-approval-decision="reject">Reject</button></div>`;
+  const canApproveSample = approval.action?.kind === "order_sample" && approval.action?.withinBudget === true;
+  const approve = canApproveSample ? '<button class="primary-button" data-approval-decision="approve">Approve sample</button>' : "";
+  const warning = canApproveSample ? "" : '<div class="evidence-warning">No orderable sample is currently available within budget. Keep negotiating or reject this recommendation.</div>';
+  return `<div class="decision-actions">${approve}<button class="button light" data-approval-decision="negotiate_more">Keep negotiating</button><button class="button danger-button" data-approval-decision="reject">Reject</button></div>${warning}`;
 }
 
 function renderApprovals() {
@@ -462,7 +465,8 @@ function renderApprovals() {
   if (!recommendation) {
     decisionState = `<article class="panel decision-state"><span class="provider-pill">Analysis pending</span><h2>No recommendation yet.</h2><p>Negotiation evidence must be normalized and compared before a human decision is created.</p>${localActions && comparisonReady ? '<button class="primary-button" id="run-quote-analysis">Run quote comparison</button>' : ""}</article>`;
   } else if (approval?.status === "pending") {
-    decisionState = `<article class="panel decision-state pending-decision"><span class="provider-pill live">Human decision required</span><h2>Approve one controlled next step.</h2><p>The agent has finished the research, negotiation, and comparison work. No terms have been accepted and no money has been spent.</p>${decisionButtons}</article>`;
+    const canApproveSample = approval.action?.kind === "order_sample" && approval.action?.withinBudget === true;
+    decisionState = `<article class="panel decision-state pending-decision"><span class="provider-pill live">Human decision required</span><h2>${canApproveSample ? "Approve one controlled next step." : "Sample action is not currently orderable."}</h2><p>${canApproveSample ? "The agent has finished the research, negotiation, and comparison work. No terms have been accepted and no money has been spent." : "The recommendation remains visible, but Vendor Scout will not allow an approval that has no executable in-budget sample action."}</p>${decisionButtons}</article>`;
   } else if (approval?.status === "approved" && !order) {
     decisionState = `<article class="panel decision-state execution-gate"><span class="provider-pill fixture">Business approval recorded</span><h2>Approved — execution is still gated.</h2><p>The sample action is authorized in Vendor Scout, but has not executed. The next TrueForge turn may call <code>vendor_scout_execute_sample_order</code>; that tool is destructive and must pause in TrueForge for tool approval immediately before execution.</p></article>`;
   } else if (approval?.status === "returned_to_negotiation") {

@@ -53,6 +53,26 @@ test("approval decision is explicit and cannot be replayed", () => {
   assert.throws(() => applyApprovalDecision(approval, "approve"), /not pending/);
 });
 
+test("non-orderable recommendation cannot be approved into a dead-end state", () => {
+  const { mission, supplier, quote, recommendation } = fixture();
+  quote.sample = { available: false, basePrice: null };
+  const approval = buildApprovalPacket(mission, recommendation, quote, supplier, []);
+  assert.equal(approval.action.kind, "progress_supplier_relationship");
+  assert.equal(approval.action.executable, false);
+  assert.throws(() => applyApprovalDecision(approval, "approve"), /not executable/);
+  applyApprovalDecision(approval, "negotiate_more");
+  assert.equal(approval.status, "returned_to_negotiation");
+});
+
+test("sample execution refuses price drift after human approval", () => {
+  const { mission, supplier, quote, recommendation } = fixture();
+  const approval = buildApprovalPacket(mission, recommendation, quote, supplier, []);
+  applyApprovalDecision(approval, "approve");
+  mission.status = "approved";
+  quote.sample.basePrice = 300;
+  assert.throws(() => createSampleOrder(mission, approval, quote), /fresh approval required/);
+});
+
 test("sample order refuses execution before the mission and human decision are approved", () => {
   const { mission, supplier, quote, recommendation } = fixture();
   const approval = buildApprovalPacket(mission, recommendation, quote, supplier, []);
@@ -79,6 +99,32 @@ test("controlled sample execution is explicit and never claims external spend", 
     assert.equal(result.simulated, true);
     assert.equal(result.provider, "controlled-sample-order");
     assert.equal(result.externalOrderId, null);
+  } finally {
+    if (previous == null) delete process.env.VENDOR_SCOUT_ORDER_URL; else process.env.VENDOR_SCOUT_ORDER_URL = previous;
+  }
+});
+
+test("remote sample provider response is bounded while streaming", async t => {
+  const server = http.createServer(async (req, res) => {
+    for await (const chunk of req) void chunk;
+    res.writeHead(200, { "Content-Type": "application/json", "Transfer-Encoding": "chunked" });
+    res.write('{"padding":"');
+    for (let index = 0; index < 80; index += 1) res.write("x".repeat(4096));
+    res.end('"}');
+  });
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const { port } = server.address();
+
+  const { mission, supplier, quote, recommendation } = fixture();
+  mission.status = "approved";
+  const approval = buildApprovalPacket({ ...mission, status: "awaiting_approval" }, recommendation, quote, supplier, []);
+  applyApprovalDecision(approval, "approve");
+  const order = createSampleOrder(mission, approval, quote);
+  const previous = process.env.VENDOR_SCOUT_ORDER_URL;
+  process.env.VENDOR_SCOUT_ORDER_URL = `http://127.0.0.1:${port}`;
+  try {
+    await assert.rejects(() => submitSampleOrder(order), /response is too large/);
   } finally {
     if (previous == null) delete process.env.VENDOR_SCOUT_ORDER_URL; else process.env.VENDOR_SCOUT_ORDER_URL = previous;
   }

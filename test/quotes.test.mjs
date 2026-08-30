@@ -99,6 +99,42 @@ test("MOQ overbuy is explicit and changes known production cost", () => {
   assert.equal(quote.itemSubtotal.base, 210000);
 });
 
+test("MOQ-constrained order quantity selects the tier actually purchased", () => {
+  const { mission, candidates } = fixture();
+  const candidate = candidates[0];
+  const conversation = readyConversation({
+    mission,
+    candidate,
+    source: "overbuy-tier",
+    unitPrice: 320,
+    moq: 700,
+    quantityTiers: [
+      { minQuantity: 500, unitPrice: 300 },
+      { minQuantity: 700, unitPrice: 280 }
+    ],
+    requireReady: false
+  });
+  conversation.status = "offer_ready";
+  conversation.negotiation.latestEvaluation.status = "ready_for_comparison";
+  const quote = normalizeQuote(mission, candidate, conversation);
+  assert.equal(quote.orderQuantity, 700);
+  assert.equal(quote.unitPrice.original, 280);
+  assert.equal(quote.unitPrice.basis, "quantity-tier-700");
+  assert.equal(quote.itemSubtotal.base, 196000);
+});
+
+test("pre-shipping savings includes mandatory MOQ overbuy when shipping is unknown", () => {
+  const { mission, candidates } = fixture();
+  const candidate = candidates[0];
+  const conversation = readyConversation({ mission, candidate, source: "overbuy-no-shipping", moq: 700, unitPrice: 300, shippingCost: null, requireReady: false });
+  conversation.status = "offer_ready";
+  conversation.negotiation.latestEvaluation.status = "ready_for_comparison";
+  const quote = normalizeQuote(mission, candidate, conversation);
+  assert.equal(quote.itemSubtotal.base, 210000);
+  assert.equal(quote.economics.estimatedLandedSavingsBase, null);
+  assert.equal(quote.economics.savingsBeforeShippingBase, 4500);
+});
+
 test("missing shipping remains visibly incomplete instead of being treated as zero landed cost", () => {
   const { mission, candidates } = fixture();
   const candidate = candidates[0];

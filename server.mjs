@@ -434,11 +434,29 @@ function quoteAnalysisSignature(analysis) {
     quotes: analysis.quotes.map(quote => ({
       id: quote.id,
       sourceOfferId: quote.sourceOfferId,
+      sourceMessageId: quote.sourceMessageId,
+      sourceReference: quote.sourceReference,
       fx: quote.fx,
+      quantity: quote.quantity,
+      orderQuantity: quote.orderQuantity,
+      overbuyUnits: quote.overbuyUnits,
+      unitPrice: quote.unitPrice,
+      itemSubtotal: quote.itemSubtotal,
+      shipping: quote.shipping,
       knownTotal: quote.knownTotal,
       landedCost: quote.landedCost,
+      leadTimeDays: quote.leadTimeDays,
+      moq: quote.moq,
+      sample: quote.sample,
+      certifications: quote.certifications,
+      technicalConfirmed: quote.technicalConfirmed,
+      supplierRiskScore: quote.supplierRiskScore,
+      evidence: quote.evidence,
+      completeness: quote.completeness,
+      economics: quote.economics,
       score: quote.score,
-      rank: quote.rank
+      rank: quote.rank,
+      comparison: quote.comparison
     })),
     offerEvaluations: analysis.offerEvaluations.map(item => ({
       supplierId: item.supplierId,
@@ -474,9 +492,18 @@ function prepareMissionApproval(mission, analysis) {
   const quote = analysis.quotes.find(item => item.id === analysis.recommendation.quoteId);
   const supplier = state.supplierCandidates.find(item => item.id === analysis.recommendation.supplierId && item.missionId === mission.id);
   if (!quote || !supplier) throw httpError(500, "Recommendation evidence is incomplete");
-  const packet = buildApprovalPacket(mission, analysis.recommendation, quote, supplier, analysis.quotes);
-  const existing = state.approvals.find(item => item.id === packet.id);
-  if (existing) return existing;
+  const matchingApprovals = state.approvals.filter(item => (
+    item.missionId === mission.id &&
+    item.recommendationId === analysis.recommendation.id &&
+    item.quoteId === quote.id
+  ));
+  const existingPending = matchingApprovals.find(item => item.status === "pending");
+  if (existingPending) {
+    if (mission.status === "comparing") mission.status = transitionMission(mission.status, "analysis_complete");
+    return existingPending;
+  }
+  const cycle = matchingApprovals.length + 1;
+  const packet = buildApprovalPacket(mission, analysis.recommendation, quote, supplier, analysis.quotes, new Date().toISOString(), cycle);
   state.approvals = [...state.approvals.filter(item => item.missionId !== mission.id || item.status !== "pending"), packet];
   if (mission.status === "comparing") mission.status = transitionMission(mission.status, "analysis_complete");
   mission.updatedAt = packet.createdAt;
@@ -493,6 +520,9 @@ async function decideMissionApproval(missionId, decision) {
   requireStatus(mission, "awaiting_approval", "record human approval decision");
   const approval = state.approvals.find(item => item.missionId === missionId && item.status === "pending");
   if (!approval) throw httpError(409, "No pending approval exists for this mission");
+  if (decision === "approve" && (approval.action?.kind !== "order_sample" || approval.action?.withinBudget !== true)) {
+    throw httpError(409, "The recommended action does not contain an orderable in-budget sample; choose Keep negotiating or Reject");
+  }
   applyApprovalDecision(approval, decision);
   if (decision === "approve") mission.status = transitionMission(mission.status, "approve");
   else if (decision === "reject") mission.status = transitionMission(mission.status, "reject");

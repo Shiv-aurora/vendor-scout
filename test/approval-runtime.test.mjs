@@ -132,21 +132,32 @@ test("end-to-end decision flow blocks execution, records approval, and executes 
   assert.equal(tool.structuredContent.activity.filter(item => item.title.startsWith("Controlled sample order recorded")).length, 1);
 });
 
-test("keep negotiating and reject decisions never create a sample order", async t => {
+test("keep negotiating creates a fresh approval cycle and reject never creates a sample order", async t => {
   const runtime = await runtimeFor(t);
 
   await runDemo(runtime.baseUrl);
+  let state = await snapshot(runtime.baseUrl);
+  const firstApproval = state.approvals.find(item => item.status === "pending");
+  assert.ok(firstApproval);
+
   let decision = await postJson(`${runtime.baseUrl}/api/missions/mission-lidar-500/approval`, { decision: "negotiate_more" });
   assert.equal(decision.response.status, 200);
   assert.equal(decision.payload.mission.status, "negotiating");
-  assert.equal(decision.payload.approvals[0].status, "returned_to_negotiation");
   assert.equal(decision.payload.sampleOrders.length, 0);
 
-  await runDemo(runtime.baseUrl);
+  let analysis = await postJson(`${runtime.baseUrl}/api/missions/mission-lidar-500/analysis`, { fxRates: [] });
+  assert.equal(analysis.response.status, 200, JSON.stringify(analysis.payload));
+  assert.equal(analysis.payload.mission.status, "awaiting_approval");
+  const secondApproval = analysis.payload.approvals.find(item => item.status === "pending");
+  assert.ok(secondApproval);
+  assert.notEqual(secondApproval.id, firstApproval.id);
+  assert.equal(secondApproval.cycle, 2);
+  assert.equal(analysis.payload.approvals.find(item => item.id === firstApproval.id).status, "returned_to_negotiation");
+
   decision = await postJson(`${runtime.baseUrl}/api/missions/mission-lidar-500/approval`, { decision: "reject" });
   assert.equal(decision.response.status, 200);
   assert.equal(decision.payload.mission.status, "rejected");
-  assert.equal(decision.payload.approvals[0].status, "rejected");
+  assert.equal(decision.payload.approvals.find(item => item.id === secondApproval.id).status, "rejected");
   assert.equal(decision.payload.sampleOrders.length, 0);
 });
 
