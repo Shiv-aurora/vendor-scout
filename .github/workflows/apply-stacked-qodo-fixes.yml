@@ -30,6 +30,42 @@ jobs:
           PY
       - name: Apply stacked review fixes
         run: node scripts/apply-stacked-qodo-fixes.mjs
+      - name: Preserve final provenance-backed FX architecture
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('lib/negotiation.mjs')
+          source = path.read_text()
+          before = '''  if (!offer.currency) missingFields.push("currency");
+  else if (offer.currency !== targetCurrency) gaps.push({ field: "currency", priority: "high", offered: offer.currency, target: targetCurrency, reason: `pricing currency is not comparable to mission target currency ${targetCurrency}` });
+  if (!Number.isFinite(price.value)) missingFields.push("unitPrice");
+'''
+          after = '''  const requiresFx = Boolean(offer.currency && offer.currency !== targetCurrency);
+  if (!offer.currency) missingFields.push("currency");
+  if (!Number.isFinite(price.value)) missingFields.push("unitPrice");
+'''
+          if before not in source:
+              raise SystemExit('currency compatibility anchor missing')
+          source = source.replace(before, after, 1)
+          before = '''    competitorBenchmark: benchmark,
+    effectiveUnitPrice: price.value,
+    priceBasis: price.basis,
+    priceTier: price.tier,
+    gaps,
+'''
+          after = '''    competitorBenchmark: benchmark,
+    effectiveUnitPrice: price.value,
+    priceBasis: price.basis,
+    priceTier: price.tier,
+    requiresFx,
+    priceComparable: Boolean(offer.currency) && !requiresFx,
+    gaps,
+'''
+          if before not in source:
+              raise SystemExit('evaluation metadata anchor missing')
+          source = source.replace(before, after, 1)
+          path.write_text(source)
+          PY
       - name: Validate full suite
         run: npm run check
       - name: Commit validated remediation
