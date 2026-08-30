@@ -8,7 +8,7 @@
   <title>Vendor Scout — Autonomous hardware procurement</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23b9f45f'/%3E%3Ctext x='7' y='23' font-size='18' font-family='Arial' font-weight='700' fill='%2307100d'%3EVS%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/styles.css?v=vendor-scout-2">
-  <link rel="stylesheet" href="/procurement.css?v=vendor-scout-5">
+  <link rel="stylesheet" href="/procurement.css?v=vendor-scout-6">
 </head>
 <body>
   <div id="landing">
@@ -60,18 +60,18 @@
       </section>
 
       <section class="live-section" id="approval">
-        <div class="live-copy"><div class="section-label"><i></i> Human-in-the-loop</div><h2>The agent earns the decision. It does not silently make it.</h2><p>The approval packet is designed to show current versus proposed economics, lead time, MOQ, shipping, supplier risk, competing offers, sample terms, and the recommendation.</p><button class="button dark" data-open-view="approvals">Open approval boundary</button></div>
-        <div class="live-catalog-card"><div class="catalog-card-head"><span>Decision packet</span><b>Before commitment</b></div><article><div><i></i><b>Current supplier</b><small>Northstar Components</small></div><strong>$429 / unit</strong><span>42 days</span></article><article><div><i></i><b>Mission target</b><small>500 LiDAR modules</small></div><strong>≤ $390 / unit</strong><span>≤ 21 days</span></article><footer><span>Future actions</span><b>Approve · Keep negotiating · Reject</b></footer></div>
+        <div class="live-copy"><div class="section-label"><i></i> Human-in-the-loop</div><h2>The agent earns the decision. It does not silently make it.</h2><p>The live decision packet shows current versus negotiated economics, landed cost, lead time, MOQ, shipping, supplier risk, competing offers, sample terms, and the recommendation before any commitment.</p><button class="button dark" data-open-view="approvals">Open decision packet</button></div>
+        <div class="live-catalog-card"><div class="catalog-card-head"><span>Decision packet</span><b>Before commitment</b></div><article><div><i></i><b>Current supplier</b><small>Northstar Components</small></div><strong>$429 / unit</strong><span>42 days</span></article><article><div><i></i><b>Mission target</b><small>500 LiDAR modules</small></div><strong>≤ $390 / unit</strong><span>≤ 21 days</span></article><footer><span>Human actions</span><b>Approve sample · Keep negotiating · Reject</b></footer></div>
       </section>
 
       <section class="how-section" id="trueforge">
         <div class="section-label"><i></i> TrueForge orchestration boundary</div>
-        <div class="section-heading"><h2>Vendor Scout already implements the persistent TrueForge session and ten-tool sourcing, outreach, and negotiation MCP boundary; a live external TrueForge runtime is the remaining configuration step.</h2></div>
-        <div class="how-flow"><article><span>01</span><h3>Mission</h3><p>Persist procurement objectives and hard constraints.</p></article><i>→</i><article><span>02</span><h3>Agent + tools</h3><p>Attach TrueForge to the existing discovery, qualification, outreach, and negotiation action boundary.</p></article><i>→</i><article><span>03</span><h3>Analysis</h3><p>Normalize quotes and compute fair landed-cost comparisons in a sandbox.</p></article><i>→</i><article><span>04</span><h3>Approval</h3><p>Pause at consequential actions and resume only after the human decides.</p></article></div>
+        <div class="section-heading"><h2>Vendor Scout implements a persistent TrueForge session, a 12-tool procurement MCP boundary, sandbox-verified quote analysis, and a destructive sample-order tool designed to pause for TrueForge approval immediately before execution.</h2></div>
+        <div class="how-flow"><article><span>01</span><h3>Mission</h3><p>Persist procurement objectives and hard constraints.</p></article><i>→</i><article><span>02</span><h3>Agent + tools</h3><p>Attach TrueForge to the discovery, qualification, outreach, negotiation, comparison, and approved-action boundary.</p></article><i>→</i><article><span>03</span><h3>Analysis</h3><p>Normalize quotes and compute fair landed-cost comparisons in a sandbox.</p></article><i>→</i><article><span>04</span><h3>Approval</h3><p>Create the business decision packet, then pause again at the destructive execution tool before the approved action runs.</p></article></div>
       </section>
 
       <section class="preview-section">
-        <div class="preview-copy"><div class="section-label"><i></i> Current executable build</div><h2>Discovery, qualification, RFQ outreach, and evidence-backed counter negotiation now run through one persistent sourcing mission.</h2><p id="landing-build-state">Loading current mission stage</p><button class="button light enter-app">Open Command Center</button></div>
+        <div class="preview-copy"><div class="section-label"><i></i> Current executable build</div><h2>The end-to-end controlled path now runs through discovery, qualification, RFQ outreach, negotiation, quote comparison, human approval, and an approval-gated sample action.</h2><p id="landing-build-state">Loading current mission stage</p><button class="button light enter-app">Open Command Center</button></div>
         <div class="product-window"><header><a class="mini-brand"><span>VS</span></a><strong>Atlas Robotics · LiDAR sourcing</strong><small>Persistent sourcing mission</small></header><div class="window-grid"><article class="score-card"><span>Mission</span><strong>500<small> units</small></strong><p>One procurement objective and one approval boundary.</p></article><article class="stat-card"><span>Target</span><strong>$390</strong><small>Per unit</small></article><article class="stat-card"><span>Lead time</span><strong>21d</strong><small>Maximum</small></article><article class="stat-card"><span>Sample budget</span><strong>$500</strong><small>Human-gated spend</small></article></div></div>
       </section>
 
