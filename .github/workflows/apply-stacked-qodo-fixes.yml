@@ -19,13 +19,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Repair generated template escaping
+      - name: Repair generated timestamp validation
         run: |
           python - <<'PY'
           from pathlib import Path
           path = Path('scripts/apply-stacked-qodo-fixes.mjs')
           source = path.read_text()
-          source = source.replace('throw new Error(`\\${field} must be a valid ISO timestamp or null`)', 'throw new Error(`\\\\${field} must be a valid ISO timestamp or null`)')
+          source = source.replace('throw new Error(\\`${field} must be a valid ISO timestamp or null\\`)', 'throw new Error(field + " must be a valid ISO timestamp or null")')
           path.write_text(source)
           PY
       - name: Apply stacked review fixes
