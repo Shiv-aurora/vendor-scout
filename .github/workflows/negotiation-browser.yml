@@ -1,0 +1,95 @@
+name: Vendor Scout Negotiation Browser
+
+on:
+  push:
+    branches: ["build/autonomous-negotiation"]
+  pull_request:
+    paths:
+      - "public/**"
+      - "lib/negotiation.mjs"
+      - "lib/outreach.mjs"
+      - "lib/mcp.mjs"
+      - "server.mjs"
+      - ".github/workflows/negotiation-browser.yml"
+
+jobs:
+  validate-negotiation-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: Build controlled negotiation state and render Conversations
+        run: |
+          export VENDOR_SCOUT_DATA_PATH=/tmp/vendor-scout-negotiation-browser.json
+          export TRUEFORGE_BASE_URL=
+          export VENDOR_SCOUT_OUTREACH_URL=
+          rm -f "$VENDOR_SCOUT_DATA_PATH"
+          node server.mjs > /tmp/vendor-scout-negotiation.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID' EXIT
+          sleep 1
+
+          curl --fail --silent -X POST -H 'Content-Type: application/json' \
+            --data '{"action":"prepare_outreach"}' \
+            http://127.0.0.1:3000/api/missions/mission-lidar-500/actions > /tmp/prepare.json
+          curl --fail --silent -X POST -H 'Content-Type: application/json' \
+            --data '{"action":"send_outreach"}' \
+            http://127.0.0.1:3000/api/missions/mission-lidar-500/actions > /tmp/preview-rfq.json
+
+          curl --fail --silent -X POST -H 'Content-Type: application/json' \
+            --data '{"content":"Controlled negotiation evidence: USD 410 per unit, MOQ 600, 28-day production lead, FOB Shenzhen, samples available for USD 240, technical requirements confirmed.","sourceReference":"controlled/reply/neg-1","providerMessageId":"controlled-neg-1"}' \
+            http://127.0.0.1:3000/api/missions/mission-lidar-500/suppliers/supplier-heliomotion/reply > /tmp/reply.json
+
+          curl --fail --silent -X POST -H 'Content-Type: application/json' \
+            --data '{"sourceReference":"controlled/reply/neg-1","unitPrice":410,"currency":"USD","moq":600,"leadTimeDays":28,"shippingTerms":"FOB Shenzhen","sampleAvailable":true,"samplePrice":240,"technicalConfirmed":true}' \
+            http://127.0.0.1:3000/api/missions/mission-lidar-500/suppliers/supplier-heliomotion/offer > /tmp/offer.json
+
+          curl --fail --silent -X POST -H 'Content-Type: application/json' \
+            --data '{"action":"prepare"}' \
+            http://127.0.0.1:3000/api/missions/mission-lidar-500/suppliers/supplier-heliomotion/counter > /tmp/counter-prepare.json
+          curl --fail --silent -X POST -H 'Content-Type: application/json' \
+            --data '{"action":"send"}' \
+            http://127.0.0.1:3000/api/missions/mission-lidar-500/suppliers/supplier-heliomotion/counter > /tmp/counter-preview.json
+
+          grep '"status":"negotiating"' /tmp/counter-preview.json
+          grep '"status":"counter_previewed"' /tmp/counter-preview.json
+          grep '"status":"counter_required"' /tmp/counter-preview.json
+          grep '"provider":"controlled-preview"' /tmp/counter-preview.json
+          grep '"field":"unitPrice"' /tmp/counter-preview.json
+          grep '"field":"moq"' /tmp/counter-preview.json
+          grep '"field":"leadTimeDays"' /tmp/counter-preview.json
+
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$CHROME_BIN"
+
+          "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --virtual-time-budget=3500 --window-size=1440,1200 --dump-dom 'http://127.0.0.1:3000/#app/conversations' > /tmp/vendor-scout-negotiation-desktop.html
+          grep '<section class="view active" id="view-conversations">' /tmp/vendor-scout-negotiation-desktop.html
+          grep 'LATEST PERSISTED OFFER' /tmp/vendor-scout-negotiation-desktop.html
+          grep 'Counter required' /tmp/vendor-scout-negotiation-desktop.html
+          grep 'USD 410.00' /tmp/vendor-scout-negotiation-desktop.html
+          grep 'price is above the mission target' /tmp/vendor-scout-negotiation-desktop.html
+          grep 'MOQ exceeds requested quantity' /tmp/vendor-scout-negotiation-desktop.html
+          grep 'lead time exceeds mission limit' /tmp/vendor-scout-negotiation-desktop.html
+          grep 'View negotiation counter · round 1' /tmp/vendor-scout-negotiation-desktop.html
+          grep 'Controlled preview · no external message sent' /tmp/vendor-scout-negotiation-desktop.html
+          if grep -q 'id="workspace-error"[^>]*>[^<]' /tmp/vendor-scout-negotiation-desktop.html; then
+            echo "Workspace error is visible"
+            exit 1
+          fi
+
+          "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --virtual-time-budget=3500 --window-size=1440,1200 --screenshot=/tmp/vendor-scout-negotiation-desktop.png 'http://127.0.0.1:3000/#app/conversations'
+          "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --virtual-time-budget=3500 --window-size=390,844 --screenshot=/tmp/vendor-scout-negotiation-mobile.png 'http://127.0.0.1:3000/#app/conversations'
+      - name: Upload negotiation browser evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: vendor-scout-negotiation-browser
+          path: |
+            /tmp/vendor-scout-negotiation-desktop.png
+            /tmp/vendor-scout-negotiation-mobile.png
+            /tmp/vendor-scout-negotiation-desktop.html
+            /tmp/counter-preview.json
