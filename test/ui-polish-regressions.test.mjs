@@ -25,13 +25,18 @@ test("mobile navigation rail spans the viewport", () => {
 });
 
 test("public approval packet keeps all human choices visible without enabling browser mutations", () => {
-  const start = appSource.indexOf("// Pending decision: the three human actions sit immediately under the numbers.");
-  assert.notEqual(start, -1, "pending approval rendering must exist");
-  const approval = appSource.slice(start, start + 4000);
+  const start = appSource.indexOf("function approvalActionsMarkup");
+  const end = appSource.indexOf("function decisionBlock", start);
+  assert.notEqual(start, -1, "approval action renderer must exist");
+  assert.ok(end > start, "approval action renderer must be bounded");
 
-  assert.match(approval, /Approve sample/);
-  assert.match(approval, /Send back to negotiate/);
-  assert.match(approval, />Reject</);
-  assert.match(approval, /disabled aria-disabled="true" title="Secure agent authorization required"/);
-  assert.match(approval, /Public demo controls are read-only/);
+  const factory = new Function("escapeHtml", "money2", `${appSource.slice(start, end)}; return approvalActionsMarkup;`);
+  const renderActions = factory(value => String(value), value => `$${Number(value).toFixed(2)}`);
+  const markup = renderActions({ localActions: false, canApproveSample: false, samplePrice: null });
+
+  assert.match(markup, /Approve sample unavailable/);
+  assert.match(markup, /Send back to negotiate/);
+  assert.match(markup, />Reject</);
+  assert.equal((markup.match(/disabled aria-disabled="true"/g) || []).length, 3);
+  assert.doesNotMatch(markup, /data-approval-decision/);
 });

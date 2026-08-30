@@ -1368,6 +1368,23 @@ function renderApprovals() {
   });
 }
 
+function approvalActionsMarkup({ localActions, canApproveSample, samplePrice }) {
+  const decisionAttribute = decision => localActions
+    ? `data-approval-decision="${decision}"`
+    : 'disabled aria-disabled="true" title="Secure agent authorization required"';
+  const approve = canApproveSample
+    ? `<button class="btn btn-lg btn-accent" ${decisionAttribute("approve")}>Approve sample · ${escapeHtml(money2(samplePrice))}</button>`
+    : localActions
+      ? ""
+      : `<button class="btn btn-lg btn-accent" ${decisionAttribute("approve")}>Approve sample unavailable</button>`;
+
+  return `<div class="decide-actions">
+    ${approve}
+    <button class="btn btn-lg btn-ghost" ${decisionAttribute("negotiate_more")}>Send back to negotiate</button>
+    <button class="btn btn-lg btn-danger" ${decisionAttribute("reject")}>Reject</button>
+  </div>`;
+}
+
 function decisionBlock(context, options) {
   const { mission: currentMission, recommendation, approval, order, winner, localActions } = context;
   const { baseline, savings, savingsPercent, cost, comparisonReady } = options;
@@ -1417,14 +1434,7 @@ function decisionBlock(context, options) {
 
   // Pending decision: the three human actions sit immediately under the numbers.
   if (approval?.status === "pending") {
-    const decisionAttribute = decision => localActions
-      ? `data-approval-decision="${decision}"`
-      : 'disabled aria-disabled="true" title="Secure agent authorization required"';
-    const actions = `<div class="decide-actions">
-        ${canApproveSample ? `<button class="btn btn-lg btn-accent" ${decisionAttribute("approve")}>Approve sample · ${escapeHtml(money2(samplePrice))}</button>` : ""}
-        <button class="btn btn-lg btn-ghost" ${decisionAttribute("negotiate_more")}>Send back to negotiate</button>
-        <button class="btn btn-lg btn-danger" ${decisionAttribute("reject")}>Reject</button>
-      </div>
+    const actions = `${approvalActionsMarkup({ localActions, canApproveSample, samplePrice })}
       <p class="decide-guard">
         ${localActions
           ? canApproveSample
