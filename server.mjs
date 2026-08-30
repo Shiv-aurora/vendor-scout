@@ -431,6 +431,7 @@ function quoteAnalysisSignature(analysis) {
       score: quote.score,
       rank: quote.rank
     })),
+    offerEvaluations: analysis.offerEvaluations,
     recommendation: analysis.recommendation,
     blockers: analysis.blockers
   });
@@ -446,6 +447,16 @@ async function analyzeMissionQuotes(missionId, fxRates = []) {
   const signature = quoteAnalysisSignature(analysis);
   const changed = mission.execution?.quoteAnalysisSignature !== signature;
 
+  const currentEvaluationByConversation = new Map(analysis.offerEvaluations.map(item => [item.conversationId, item.evaluation]));
+  for (const conversation of conversations) {
+    const evaluation = currentEvaluationByConversation.get(conversation.id);
+    if (!evaluation || !conversation.negotiation) continue;
+    conversation.negotiation.latestEvaluation = evaluation;
+    if (evaluation.status === "ready_for_comparison") conversation.status = "offer_ready";
+    else if (evaluation.status === "reject_recommended") conversation.status = "human_review";
+    else if (["offer_ready", "human_review", "supplier_replied", "counter_sent", "counter_previewed"].includes(conversation.status)) conversation.status = "negotiating";
+  }
+
   state.quotes = [
     ...state.quotes.filter(quote => quote.missionId !== missionId),
     ...analysis.quotes
@@ -459,6 +470,7 @@ async function analyzeMissionQuotes(missionId, fxRates = []) {
   mission.updatedAt = new Date().toISOString();
   mission.execution = {
     ...(mission.execution || {}),
+    negotiationReady: analysis.offerEvaluations.some(item => item.evaluation.status === "ready_for_comparison"),
     analysisReady: Boolean(analysis.recommendation),
     analysisAt: analysis.analyzedAt,
     analysisBaseCurrency: analysis.baseCurrency,
