@@ -512,6 +512,8 @@ async function decideMissionApproval(missionId, decision) {
 async function executeApprovedSampleOrder(missionId) {
   const mission = state.missions.find(item => item.id === missionId);
   if (!mission) throw httpError(404, "Sourcing mission not found");
+  const completedOrder = [...state.sampleOrders].reverse().find(item => item.missionId === missionId && ["submitted", "simulated"].includes(item.status));
+  if (mission.status === "completed" && completedOrder) return missionSnapshot(missionId);
   requireStatus(mission, "approved", "execute approved sample action");
   const approval = [...state.approvals].reverse().find(item => item.missionId === missionId && item.status === "approved");
   if (!approval) throw httpError(409, "No approved human decision exists for this mission");

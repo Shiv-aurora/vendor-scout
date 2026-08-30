@@ -423,6 +423,7 @@ function renderApprovals() {
   if (!view || !currentMission) return;
   const quotes = (data.quotes || []).filter(quote => quote.missionId === currentMission.id);
   const ranked = quotes.filter(quote => Number.isInteger(quote.rank)).sort((a, b) => a.rank - b.rank);
+  const displayQuotes = [...quotes].sort((a, b) => (a.rank ?? Number.MAX_SAFE_INTEGER) - (b.rank ?? Number.MAX_SAFE_INTEGER));
   const recommendation = latestForMission(data.recommendations, currentMission.id);
   const approval = latestForMission(data.approvals, currentMission.id);
   const order = latestForMission(data.sampleOrders, currentMission.id);
@@ -434,14 +435,14 @@ function renderApprovals() {
   const savingsPercent = winner?.economics?.estimatedLandedSavingsPercent ?? winner?.economics?.savingsPercentBeforeShipping;
   const comparisonReady = ["negotiating", "comparing"].includes(currentMission.status) && Boolean(currentMission.execution?.negotiationReady);
 
-  const quoteCards = ranked.length
-    ? ranked.map(quote => {
+  const quoteCards = displayQuotes.length
+    ? displayQuotes.map(quote => {
         const quoteCost = quoteDisplayCost(quote);
         const selected = recommendation?.quoteId === quote.id;
         const score = quote.score?.total;
         const scoreComponents = quote.score?.components || {};
         return `<article class="panel quote-card ${selected ? "quote-winner" : ""}">
-          <header><div><span class="quote-rank">#${quote.rank}</span><h3>${escapeHtml(quote.supplierName)}</h3></div><div class="quote-score"><strong>${Number.isFinite(score) ? score.toFixed(1) : "—"}</strong><small>/100</small></div></header>
+          <header><div><span class="quote-rank">${Number.isInteger(quote.rank) ? `#${quote.rank}` : "—"}</span><h3>${escapeHtml(quote.supplierName)}</h3></div><div class="quote-score"><strong>${Number.isFinite(score) ? score.toFixed(1) : "—"}</strong><small>/100</small></div></header>
           <div class="quote-cost"><strong>${escapeHtml(quoteCost.value)}</strong><span>${escapeHtml(quoteCost.label)}</span></div>
           <div class="quote-facts"><span>Unit price<b>${money2(quote.unitPrice?.base)}</b></span><span>Lead time<b>${days(quote.leadTimeDays)}</b></span><span>MOQ<b>${number(quote.moq)}</b></span><span>Shipping<b>${escapeHtml(quote.shipping?.terms || "Unknown")}</b></span><span>Supplier risk<b>${Number.isFinite(quote.supplierRiskScore) ? `${quote.supplierRiskScore}/100` : "—"}</b></span><span>Sample<b>${quote.sample?.available === true ? money2(quote.sample?.basePrice) : quote.sample?.available === false ? "Unavailable" : "Unknown"}</b></span></div>
           <div class="score-breakdown">${Object.entries(scoreComponents).map(([key, value]) => `<span><i style="width:${Math.max(0, Math.min(100, Number(value) || 0))}%"></i><b>${escapeHtml(scoreComponentLabel(key))}</b><em>${Number.isFinite(value) ? Number(value).toFixed(0) : "—"}</em></span>`).join("")}</div>
@@ -475,7 +476,7 @@ function renderApprovals() {
 
   view.innerHTML = `<div class="recovery-hero decision-hero"><div><p class="eyebrow">COMPARE → HUMAN APPROVAL → APPROVED ACTION</p><h2>The agent does the work.<br><em>The human commits.</em></h2><p>Every number below comes from persisted supplier evidence. Unknown cost stays unknown; incomplete landed-cost offers cannot beat complete ones by looking artificially cheap.</p></div><span class="verified-badge"><i></i> ${data.summary.approvalsWaiting} waiting</span></div>
     ${recommendation && winner ? `<article class="panel recommendation-hero"><div class="recommendation-main"><div><span class="recommendation-label">VENDOR SCOUT RECOMMENDS</span><h2>${escapeHtml(recommendation.supplierName)}</h2><p>${escapeHtml(recommendation.status === "provisional" ? "Provisional recommendation — some cost evidence remains incomplete." : "Best current evidence across economics, lead time, supplier quality, MOQ, sample terms, and completeness.")}</p></div><div class="recommendation-score"><strong>${Number.isFinite(recommendation.score) ? recommendation.score.toFixed(1) : "—"}</strong><span>decision score</span></div></div><div class="recommendation-metrics"><span>Negotiated unit<b>${money2(winner.unitPrice?.base)}</b><small>Current ${money2(currentMission.currentSupplier.unitPrice)}</small></span><span>${escapeHtml(cost.label)}<b>${escapeHtml(cost.value)}</b><small>${cost.complete ? "Comparable landed economics" : "Incomplete cost evidence"}</small></span><span>Projected savings<b>${money(savings)}</b><small>${Number.isFinite(savingsPercent) ? `${savingsPercent.toFixed(1)}% vs current` : "vs current supplier"}</small></span><span>Lead time<b>${days(winner.leadTimeDays)}</b><small>Current ${days(currentMission.currentSupplier.leadTimeDays)}</small></span><span>MOQ<b>${number(winner.moq)}</b><small>${number(currentMission.quantity)} units requested</small></span><span>Sample<b>${winner.sample?.available === true ? money2(samplePrice) : "—"}</b><small>Budget ${money2(currentMission.constraints.sampleBudget)}</small></span></div><div class="recommendation-evidence"><div><h3>Why this offer</h3>${reasons}</div>${risks}</div></article>` : ""}
-    <div class="section-title decision-section-title"><div><p class="eyebrow">NORMALIZED QUOTE COMPARISON</p><h2>${ranked.length ? `${ranked.length} comparable offer${ranked.length === 1 ? "" : "s"}` : "Waiting for comparison"}</h2></div><span class="local-badge">Deterministic scoring</span></div><div class="quote-grid">${quoteCards}</div>
+    <div class="section-title decision-section-title"><div><p class="eyebrow">NORMALIZED QUOTE COMPARISON</p><h2>${displayQuotes.length ? `${displayQuotes.length} supplier offer${displayQuotes.length === 1 ? "" : "s"} · ${ranked.length} rankable` : "Waiting for comparison"}</h2></div><span class="local-badge">Deterministic scoring</span></div><div class="quote-grid">${quoteCards}</div>
     <div class="section-title decision-section-title"><div><p class="eyebrow">HUMAN COMMITMENT BOUNDARY</p><h2>One decision. Full evidence.</h2></div></div>${decisionState}`;
 
   $("#run-quote-analysis")?.addEventListener("click", runQuoteAnalysis);
