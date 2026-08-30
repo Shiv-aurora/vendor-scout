@@ -91,7 +91,6 @@ test("MOQ overbuy is explicit and changes known production cost", () => {
   const candidate = candidates[0];
   const conversation = readyConversation({ mission, candidate, source: "overbuy", moq: 700, unitPrice: 300, requireReady: false });
   assert.equal(conversation.negotiation.latestEvaluation.status, "counter_required", "Phase 7 should normally counter this MOQ");
-  // Defensive Phase 8 normalization still accounts for overbuy if an imported/finalized offer is marked ready downstream.
   conversation.status = "offer_ready";
   conversation.negotiation.latestEvaluation.status = "ready_for_comparison";
   const quote = normalizeQuote(mission, candidate, conversation);
@@ -149,7 +148,7 @@ test("analysis ranks complete offers with transparent score components and recom
   assert.ok(ranked[0].score.total >= ranked[1].score.total);
   for (const quote of ranked) {
     assert.deepEqual(Object.keys(quote.score.components).sort(), ["completeness", "economics", "leadTime", "moq", "sample", "supplierQuality"].sort());
-    assert.equal(Object.values(quote.score.weights).reduce((sum, value) => sum + value, 0), 1);
+    assert.ok(Math.abs(Object.values(quote.score.weights).reduce((sum, value) => sum + value, 0) - 1) < 1e-12);
   }
   assert.equal(analysis.recommendation.supplierId, ranked[0].supplierId);
   assert.equal(analysis.recommendation.humanApprovalRequired, true);
