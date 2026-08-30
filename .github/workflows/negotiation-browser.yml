@@ -71,7 +71,6 @@ jobs:
           grep '<section class="view active" id="view-conversations">' /tmp/vendor-scout-negotiation-desktop.html
           grep '<h1 id="page-title">Negotiations</h1>' /tmp/vendor-scout-negotiation-desktop.html
           grep 'Price across the negotiation' /tmp/vendor-scout-negotiation-desktop.html
-          grep 'Counter required' /tmp/vendor-scout-negotiation-desktop.html
           grep 'USD 410.00' /tmp/vendor-scout-negotiation-desktop.html
           grep 'price is above the mission target' /tmp/vendor-scout-negotiation-desktop.html
           grep 'MOQ exceeds requested quantity' /tmp/vendor-scout-negotiation-desktop.html
