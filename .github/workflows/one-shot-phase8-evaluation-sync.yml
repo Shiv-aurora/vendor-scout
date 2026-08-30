@@ -1,0 +1,26 @@
+name: One-shot Phase 8 evaluation sync
+
+on:
+  push:
+    branches: ["build/quote-comparison"]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: build/quote-comparison
+      - name: Sync current quote evaluations into conversations
+        run: python scripts/phase8_apply_evaluations.py
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server.mjs .github/workflows/one-shot-phase8-evaluation-sync.yml scripts/phase8_apply_evaluations.py
+          git commit -m "sync current offer evaluations before ranking"
+          git push origin HEAD:build/quote-comparison
