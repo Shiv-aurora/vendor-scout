@@ -28,6 +28,7 @@ jobs:
       - name: Build approval-ready decision state
         run: |
           export VENDOR_SCOUT_DATA_PATH=/tmp/vendor-scout-decision-browser.json
+          export VENDOR_SCOUT_SEED_MODE=draft
           export TRUEFORGE_BASE_URL=
           export VENDOR_SCOUT_OUTREACH_URL=
           export VENDOR_SCOUT_ORDER_URL=

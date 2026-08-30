@@ -24,12 +24,18 @@ jobs:
       - name: Render controlled outreach negotiation view
         run: |
           export VENDOR_SCOUT_DATA_PATH=/tmp/vendor-scout-outreach-browser.json
+          export VENDOR_SCOUT_SEED_MODE=draft
           export TRUEFORGE_BASE_URL=
           rm -f "$VENDOR_SCOUT_DATA_PATH"
           node server.mjs > /tmp/vendor-scout-outreach.log 2>&1 &
           SERVER_PID=$!
           trap 'kill $SERVER_PID' EXIT
           sleep 1
+
+          curl --fail --silent -X POST \
+            -H 'Content-Type: application/json' \
+            --data '{"stage":"contacting"}' \
+            http://127.0.0.1:3000/api/dev/reset > /tmp/reset.json
 
           curl --fail --silent -X POST \
             -H 'Content-Type: application/json' \

@@ -19,6 +19,7 @@ jobs:
       - name: Runtime and browser smoke tests
         run: |
           export VENDOR_SCOUT_DATA_PATH=/tmp/vendor-scout-ci.json
+          export VENDOR_SCOUT_SEED_MODE=approval-ready
           rm -f "$VENDOR_SCOUT_DATA_PATH"
           node server.mjs > /tmp/vendor-scout.log 2>&1 &
           SERVER_PID=$!
@@ -26,7 +27,7 @@ jobs:
           sleep 1
 
           curl --fail --silent http://127.0.0.1:3000/health | grep '"status":"ok"'
-          curl --fail --silent http://127.0.0.1:3000/api/dashboard | grep '"activeMissions":1'
+          curl --fail --silent http://127.0.0.1:3000/api/dashboard | grep '"seedMode":"approval-ready"'
 
           CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
           test -n "$CHROME_BIN"
@@ -38,7 +39,8 @@ jobs:
           grep 'data-view="suppliers"' /tmp/vendor-scout-desktop.html
           grep 'data-view="conversations"' /tmp/vendor-scout-desktop.html
           grep 'data-view="approvals"' /tmp/vendor-scout-desktop.html
-          grep 'Preparing RFQs for 2 suppliers' /tmp/vendor-scout-desktop.html
+          grep 'Waiting for approval' /tmp/vendor-scout-desktop.html
+          grep 'ScanWorks Taiwan is recommended' /tmp/vendor-scout-desktop.html
           if grep -q 'id="workspace-error"[^>]*>[^<]' /tmp/vendor-scout-desktop.html; then
             echo "Workspace error is visible"
             exit 1
