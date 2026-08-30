@@ -1,0 +1,46 @@
+name: One-shot Phase 6 copy refresh
+
+on:
+  push:
+    branches: ["build/supplier-outreach"]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: build/supplier-outreach
+      - name: Refresh implemented-phase product copy
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('public/index.html')
+          text = path.read_text()
+          replacements = {
+            '/procurement.css?v=vendor-scout-3': '/procurement.css?v=vendor-scout-4',
+            '/app.js?v=vendor-scout-3': '/app.js?v=vendor-scout-4',
+            'The later workflow will contact and negotiate with qualified suppliers, but spending money or accepting terms remains human-gated.': 'Qualified suppliers become persistent RFQ threads. Vendor Scout can deliver non-binding RFQs through an idempotent transport, persist replies, and move into negotiation while commitments remain human-gated.',
+            '<div class="section-label"><i></i> Target TrueForge architecture</div>': '<div class="section-label"><i></i> TrueForge orchestration boundary</div>',
+            'The current mission contract is ready for a persistent TrueForge session; TrueForge itself is the next orchestration integration.': 'Vendor Scout already implements the persistent TrueForge session and seven-tool MCP boundary; a live external TrueForge runtime is the remaining configuration step.',
+            'Discovery and qualification now run through the mission instead of being display-only fixture state.': 'Discovery, qualification, and RFQ outreach now run through one persistent sourcing mission.',
+            'Outreach is the next integration milestone. Qualified suppliers will become persistent RFQ and negotiation threads here instead of one-off generated messages.': 'Qualified suppliers become persistent RFQ and negotiation threads here. Controlled previews never claim real contact, and live delivery remains retry-safe.',
+            'The RFQ contract will request unit price, quantity tiers, MOQ, inventory, lead time, shipping terms, sample availability, sample pricing, certifications, and missing technical confirmation.': 'The RFQ contract requests unit price, quantity tiers, MOQ, inventory, lead time, shipping terms, sample availability, sample pricing, certifications, and missing technical confirmation.',
+            '<a href="#trueforge">TrueForge target</a>': '<a href="#trueforge">TrueForge integration</a>'
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'expected copy not found: {old[:80]}')
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          Path('.github/workflows/one-shot-phase6-copy-refresh.yml').unlink()
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/index.html .github/workflows/one-shot-phase6-copy-refresh.yml
+          git commit -m "refresh product copy for implemented outreach phase"
+          git push origin HEAD:build/supplier-outreach
