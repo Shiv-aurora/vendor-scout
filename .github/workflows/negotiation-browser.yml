@@ -23,7 +23,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - name: Build controlled negotiation state and render Conversations
+      - name: Build controlled negotiation state and render Negotiations
         run: |
           export VENDOR_SCOUT_DATA_PATH=/tmp/vendor-scout-negotiation-browser.json
           export TRUEFORGE_BASE_URL=
@@ -69,14 +69,16 @@ jobs:
 
           "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --virtual-time-budget=3500 --window-size=1440,1200 --dump-dom 'http://127.0.0.1:3000/#app/conversations' > /tmp/vendor-scout-negotiation-desktop.html
           grep '<section class="view active" id="view-conversations">' /tmp/vendor-scout-negotiation-desktop.html
-          grep 'LATEST PERSISTED OFFER' /tmp/vendor-scout-negotiation-desktop.html
+          grep '<h1 id="page-title">Negotiations</h1>' /tmp/vendor-scout-negotiation-desktop.html
+          grep 'Price across the negotiation' /tmp/vendor-scout-negotiation-desktop.html
           grep 'Counter required' /tmp/vendor-scout-negotiation-desktop.html
           grep 'USD 410.00' /tmp/vendor-scout-negotiation-desktop.html
           grep 'price is above the mission target' /tmp/vendor-scout-negotiation-desktop.html
           grep 'MOQ exceeds requested quantity' /tmp/vendor-scout-negotiation-desktop.html
           grep 'lead time exceeds mission limit' /tmp/vendor-scout-negotiation-desktop.html
-          grep 'View negotiation counter · round 1' /tmp/vendor-scout-negotiation-desktop.html
-          grep 'Controlled preview · no external message sent' /tmp/vendor-scout-negotiation-desktop.html
+          grep 'Counter · round 1' /tmp/vendor-scout-negotiation-desktop.html
+          grep 'Counter preview — no email sent' /tmp/vendor-scout-negotiation-desktop.html
+          grep 'controlled preview · no email sent' /tmp/vendor-scout-negotiation-desktop.html
           if grep -q 'id="workspace-error"[^>]*>[^<]' /tmp/vendor-scout-negotiation-desktop.html; then
             echo "Workspace error is visible"
             exit 1
