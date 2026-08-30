@@ -10,6 +10,8 @@ import { handleMcpMessage, PROCUREMENT_MCP_TOOLS } from "./lib/mcp.mjs";
 import { migrateState } from "./lib/migrations.mjs";
 import { latestOffer, markCounterAccepted, prepareCounter as prepareNegotiationCounter, recordOfferTerms } from "./lib/negotiation.mjs";
 import { analyzeQuotes as computeQuoteAnalysis } from "./lib/quotes.mjs";
+import { applyApprovalDecision, buildApprovalPacket } from "./lib/approval.mjs";
+import { createSampleOrder, submitSampleOrder } from "./lib/orders.mjs";
 import {
   createRfqConversation,
   deliverRfq,
@@ -29,6 +31,7 @@ const configuredAgentToken = process.env.VENDOR_SCOUT_AGENT_TOKEN || "";
 const configuredMcpToken = process.env.VENDOR_SCOUT_MCP_TOKEN || configuredAgentToken;
 const allowFixtureFallback = !isProduction || process.env.VENDOR_SCOUT_ALLOW_FIXTURE_FALLBACK === "1";
 const allowOutreachPreview = !isProduction || process.env.VENDOR_SCOUT_ALLOW_OUTREACH_PREVIEW === "1";
+const allowOrderPreview = !isProduction || process.env.VENDOR_SCOUT_ALLOW_ORDER_PREVIEW === "1";
 const devResetEnabled = !isProduction || process.env.VENDOR_SCOUT_ENABLE_DEV_RESET === "1";
 const trueForge = new TrueForgeClient();
 
@@ -126,6 +129,10 @@ function capabilities() {
       provider: process.env.VENDOR_SCOUT_OUTREACH_URL ? "remote" : allowOutreachPreview ? "controlled-preview" : "unconfigured",
       previewEnabled: allowOutreachPreview
     },
+    sampleOrders: {
+      provider: process.env.VENDOR_SCOUT_ORDER_URL ? "remote" : allowOrderPreview ? "controlled-preview" : "unconfigured",
+      previewEnabled: allowOrderPreview
+    },
     devResetEnabled,
     mcp: {
       enabled: !isProduction || Boolean(configuredMcpToken),
@@ -165,6 +172,7 @@ function dashboard() {
       negotiationsActive,
       quotesReceived: state.quotes.length,
       approvalsWaiting,
+      sampleOrders: state.sampleOrders.length,
       projectedSavings
     }
   };
@@ -182,6 +190,7 @@ function missionSnapshot(id) {
     quotes: forMission(state.quotes),
     recommendations: forMission(state.recommendations),
     approvals: forMission(state.approvals),
+    sampleOrders: forMission(state.sampleOrders),
     activity: forMission(state.activity)
   };
 }
@@ -460,6 +469,89 @@ function quoteAnalysisSignature(analysis) {
   });
 }
 
+function prepareMissionApproval(mission, analysis) {
+  if (!analysis.recommendation) return null;
+  const quote = analysis.quotes.find(item => item.id === analysis.recommendation.quoteId);
+  const supplier = state.supplierCandidates.find(item => item.id === analysis.recommendation.supplierId && item.missionId === mission.id);
+  if (!quote || !supplier) throw httpError(500, "Recommendation evidence is incomplete");
+  const packet = buildApprovalPacket(mission, analysis.recommendation, quote, supplier, analysis.quotes);
+  const existing = state.approvals.find(item => item.id === packet.id);
+  if (existing?.status && existing.status !== "pending") return existing;
+  state.approvals = [...state.approvals.filter(item => item.missionId !== mission.id || item.status !== "pending"), packet];
+  if (mission.status === "comparing") mission.status = transitionMission(mission.status, "analysis_complete");
+  mission.updatedAt = packet.createdAt;
+  const unitPriceText = packet.packet.proposed.unitPriceBase == null
+    ? "Price normalized with remaining uncertainty"
+    : `${packet.packet.proposed.unitPriceBase.toFixed(2)} ${packet.packet.currentSupplier.currency} / unit`;
+  addActivity(mission.id, "approval", `Approval requested for ${packet.supplierName}`, `${unitPriceText} · human decision required before ${packet.action.kind === "order_sample" ? "sample procurement" : "supplier progression"}.`);
+  return packet;
+}
+
+async function decideMissionApproval(missionId, decision) {
+  const mission = state.missions.find(item => item.id === missionId);
+  if (!mission) throw httpError(404, "Sourcing mission not found");
+  requireStatus(mission, "awaiting_approval", "record human approval decision");
+  const approval = state.approvals.find(item => item.missionId === missionId && item.status === "pending");
+  if (!approval) throw httpError(409, "No pending approval exists for this mission");
+  applyApprovalDecision(approval, decision);
+  if (decision === "approve") mission.status = transitionMission(mission.status, "approve");
+  else if (decision === "reject") mission.status = transitionMission(mission.status, "reject");
+  else mission.status = transitionMission(mission.status, "negotiate_more");
+  mission.updatedAt = approval.decidedAt;
+  mission.execution = {
+    ...(mission.execution || {}),
+    humanDecision: decision,
+    humanDecisionAt: approval.decidedAt,
+    approvalId: approval.id
+  };
+  addActivity(missionId, "approval", decision === "approve" ? "Human approved the recommended next action" : decision === "reject" ? "Human rejected the recommendation" : "Human requested more negotiation", decision === "approve" ? "The mission is approved, but the sample action has not executed yet. TrueForge must still cross its configured approval-gated execution tool." : decision === "reject" ? "No commercial commitment or sample order was executed." : "The mission returned to negotiation without accepting terms or spending money.");
+  await persist();
+  return missionSnapshot(missionId);
+}
+
+async function executeApprovedSampleOrder(missionId) {
+  const mission = state.missions.find(item => item.id === missionId);
+  if (!mission) throw httpError(404, "Sourcing mission not found");
+  requireStatus(mission, "approved", "execute approved sample action");
+  const approval = [...state.approvals].reverse().find(item => item.missionId === missionId && item.status === "approved");
+  if (!approval) throw httpError(409, "No approved human decision exists for this mission");
+  if (approval.action?.kind !== "order_sample") throw httpError(409, "The approved recommendation does not contain an orderable sample action");
+  const quote = state.quotes.find(item => item.id === approval.quoteId && item.missionId === missionId);
+  if (!quote) throw httpError(409, "Approved quote is no longer available");
+
+  let order = state.sampleOrders.find(item => item.missionId === missionId && item.approvalId === approval.id);
+  if (!order) {
+    order = createSampleOrder(mission, approval, quote);
+    state.sampleOrders.push(order);
+    await persist();
+  }
+  if (["submitted", "simulated"].includes(order.status)) return missionSnapshot(missionId);
+
+  order.status = "submitting";
+  order.error = null;
+  await persist();
+  try {
+    const result = await submitSampleOrder(order, { allowControlledPreview: allowOrderPreview });
+    order.status = result.status;
+    order.provider = result.provider;
+    order.simulated = result.simulated;
+    order.externalOrderId = result.externalOrderId;
+    order.submittedAt = result.submittedAt;
+    order.completedAt = new Date().toISOString();
+    mission.status = transitionMission(mission.status, "action_complete");
+    mission.updatedAt = order.completedAt;
+    addActivity(missionId, "approved_action", result.simulated ? `Controlled sample order recorded for ${order.supplierName}` : `Sample order submitted to ${order.supplierName}`, result.simulated ? `${order.quantity} sample unit · ${order.currency} ${order.totalBase.toFixed(2)} · controlled simulation only, no external spend occurred.` : `${order.quantity} sample unit · ${order.currency} ${order.totalBase.toFixed(2)} · provider order ${order.externalOrderId}.`);
+  } catch (error) {
+    order.status = "failed";
+    order.error = String(error.message || error).slice(0, 2000);
+    addActivity(missionId, "approved_action", `Sample order failed for ${order.supplierName}`, order.error);
+    await persist();
+    throw error;
+  }
+  await persist();
+  return missionSnapshot(missionId);
+}
+
 async function analyzeMissionQuotes(missionId, fxRates = []) {
   const mission = state.missions.find(item => item.id === missionId);
   if (!mission) throw httpError(404, "Sourcing mission not found");
@@ -490,6 +582,7 @@ async function analyzeMissionQuotes(missionId, fxRates = []) {
   if (analysis.recommendation && mission.status === "negotiating") {
     mission.status = transitionMission(mission.status, "negotiation_complete");
   }
+  if (analysis.recommendation) prepareMissionApproval(mission, analysis);
   mission.updatedAt = new Date().toISOString();
   mission.execution = {
     ...(mission.execution || {}),
@@ -738,6 +831,10 @@ async function mcpAnalyzeQuotes(id, fxRates) {
   return serializeMutation(() => analyzeMissionQuotes(id, fxRates));
 }
 
+async function mcpExecuteSampleOrder(id) {
+  return serializeMutation(() => executeApprovedSampleOrder(id));
+}
+
 const mcpContext = {
   getMission: async id => missionSnapshot(id),
   discoverSuppliers: mcpDiscoverMission,
@@ -749,7 +846,8 @@ const mcpContext = {
   recordOffer: mcpRecordOffer,
   prepareCounter: mcpPrepareCounter,
   sendCounter: mcpSendCounter,
-  analyzeQuotes: mcpAnalyzeQuotes
+  analyzeQuotes: mcpAnalyzeQuotes,
+  executeSampleOrder: mcpExecuteSampleOrder
 };
 
 export async function handleRequest(req, res) {
@@ -836,6 +934,15 @@ export async function handleRequest(req, res) {
       const missionId = decodeURIComponent(analysisMatch[1]);
       const body = await readJsonBody(req, 128 * 1024);
       const snapshot = await serializeMutation(() => analyzeMissionQuotes(missionId, Array.isArray(body.fxRates) ? body.fxRates : []));
+      return json(res, 200, snapshot);
+    }
+
+    const approvalMatch = url.pathname.match(/^\/api\/missions\/([^/]+)\/approval$/);
+    if (approvalMatch && req.method === "POST") {
+      if (!isAgentAuthorized(req)) return json(res, configuredAgentToken ? 401 : 503, { error: configuredAgentToken ? "Agent authorization required" : "Agent mutation API is disabled until VENDOR_SCOUT_AGENT_TOKEN is configured" });
+      const missionId = decodeURIComponent(approvalMatch[1]);
+      const body = await readJsonBody(req);
+      const snapshot = await serializeMutation(() => decideMissionApproval(missionId, body.decision));
       return json(res, 200, snapshot);
     }
 
