@@ -476,7 +476,7 @@ function prepareMissionApproval(mission, analysis) {
   if (!quote || !supplier) throw httpError(500, "Recommendation evidence is incomplete");
   const packet = buildApprovalPacket(mission, analysis.recommendation, quote, supplier, analysis.quotes);
   const existing = state.approvals.find(item => item.id === packet.id);
-  if (existing?.status && existing.status !== "pending") return existing;
+  if (existing) return existing;
   state.approvals = [...state.approvals.filter(item => item.missionId !== mission.id || item.status !== "pending"), packet];
   if (mission.status === "comparing") mission.status = transitionMission(mission.status, "analysis_complete");
   mission.updatedAt = packet.createdAt;
@@ -555,12 +555,15 @@ async function executeApprovedSampleOrder(missionId) {
 async function analyzeMissionQuotes(missionId, fxRates = []) {
   const mission = state.missions.find(item => item.id === missionId);
   if (!mission) throw httpError(404, "Sourcing mission not found");
-  requireOneOfStatuses(mission, ["negotiating", "comparing"], "analyze quotes");
+  requireOneOfStatuses(mission, ["negotiating", "comparing", "awaiting_approval"], "analyze quotes");
   const candidates = state.supplierCandidates.filter(candidate => candidate.missionId === missionId);
   const conversations = state.conversations.filter(conversation => conversation.missionId === missionId);
   const analysis = computeQuoteAnalysis(mission, candidates, conversations, { fxRates });
   const signature = quoteAnalysisSignature(analysis);
   const changed = mission.execution?.quoteAnalysisSignature !== signature;
+  if (mission.status === "awaiting_approval" && changed) {
+    throw httpError(409, "Quote evidence changed after the approval packet was created; choose Keep negotiating before re-analysis");
+  }
 
   const currentEvaluationByConversation = new Map(analysis.offerEvaluations.map(item => [item.conversationId, item.evaluation]));
   for (const conversation of conversations) {

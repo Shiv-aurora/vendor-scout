@@ -87,14 +87,14 @@ test("MCP tools execute the persisted Mission → Discover → Qualify workflow"
   let rpc = await mcp(runtime.baseUrl, 1, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test-client", version: "1" } });
   assert.equal(rpc.result.protocolVersion, "2025-06-18");
   assert.equal(rpc.result.serverInfo.name, "vendor-scout");
-  assert.equal(rpc.result.serverInfo.version, "0.6.0");
+  assert.equal(rpc.result.serverInfo.version, "0.8.0");
   assert.equal(rpc.result.capabilities.tools.listChanged, false);
 
   response = await postJson(`${runtime.baseUrl}/mcp`, { jsonrpc: "2.0", method: "notifications/initialized", params: {} });
   assert.equal(response.status, 202);
 
   rpc = await mcp(runtime.baseUrl, 2, "tools/list");
-  assert.equal(rpc.result.tools.length, 11);
+  assert.equal(rpc.result.tools.length, 12);
   const names = rpc.result.tools.map(tool => tool.name);
   for (const expected of [
     "vendor_scout_get_mission",
@@ -107,7 +107,8 @@ test("MCP tools execute the persisted Mission → Discover → Qualify workflow"
     "vendor_scout_record_offer_terms",
     "vendor_scout_prepare_counter",
     "vendor_scout_send_counter",
-    "vendor_scout_analyze_quotes"
+    "vendor_scout_analyze_quotes",
+    "vendor_scout_execute_sample_order"
   ]) assert.ok(names.includes(expected), `missing MCP tool ${expected}`);
 
   const byName = name => rpc.result.tools.find(tool => tool.name === name);
@@ -128,7 +129,10 @@ test("MCP tools execute the persisted Mission → Discover → Qualify workflow"
   assert.equal(byName("vendor_scout_analyze_quotes").annotations.destructiveHint, false);
   assert.equal(byName("vendor_scout_analyze_quotes").annotations.idempotentHint, true);
   assert.equal(byName("vendor_scout_analyze_quotes").inputSchema.properties.fxRates.items.required.includes("sourceReference"), true);
-  assert.ok(!names.some(name => /accept|purchase|order_sample|place_order/.test(name)), "MCP surface must not expose a commitment tool");
+  assert.equal(byName("vendor_scout_execute_sample_order").annotations.openWorldHint, true);
+  assert.equal(byName("vendor_scout_execute_sample_order").annotations.destructiveHint, true);
+  assert.equal(byName("vendor_scout_execute_sample_order").annotations.idempotentHint, true);
+  assert.ok(!names.some(name => /accept_offer|accept_terms|purchase|place_order/.test(name)), "MCP surface must not expose an uncontrolled commitment tool");
 
   rpc = await mcp(runtime.baseUrl, 3, "tools/call", { name: "vendor_scout_get_mission", arguments: { missionId: "mission-lidar-500" } });
   assert.equal(rpc.result.structuredContent.mission.status, "draft");

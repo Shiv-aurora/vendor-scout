@@ -132,13 +132,13 @@ async function recordReadyOffer(runtime, idBase, supplierId, { source, price, le
   return snapshot;
 }
 
-test("Phase 8 persists normalized quotes, ranks offers, and stops before approval", async t => {
+test("quote analysis persists normalized offers and creates one pending approval packet", async t => {
   const { runtime, supplierIds } = await setupMission(t);
   await recordReadyOffer(runtime, 10, supplierIds[0], { source: "quote-a", price: 382, lead: 18, shipping: 900 });
   await recordReadyOffer(runtime, 20, supplierIds[1], { source: "quote-b", price: 382, lead: 14, shipping: 1300 });
 
   let snapshot = await mcp(runtime.baseUrl, 30, "vendor_scout_analyze_quotes", { missionId: "mission-lidar-500" });
-  assert.equal(snapshot.mission.status, "comparing", JSON.stringify({
+  assert.equal(snapshot.mission.status, "awaiting_approval", JSON.stringify({
     status: snapshot.mission.status,
     execution: snapshot.mission.execution,
     quotes: snapshot.quotes?.map(quote => ({ supplier: quote.supplierName, knownTotal: quote.knownTotal, landedCost: quote.landedCost, completeness: quote.completeness, score: quote.score, rank: quote.rank })),
@@ -148,7 +148,10 @@ test("Phase 8 persists normalized quotes, ranks offers, and stops before approva
   assert.equal(snapshot.mission.execution.analysisReady, true);
   assert.equal(snapshot.quotes.length, 2);
   assert.equal(snapshot.recommendations.length, 1);
-  assert.equal(snapshot.approvals.length, 0, "Phase 8 must not create Phase 9 approval state");
+  assert.equal(snapshot.approvals.length, 1);
+  assert.equal(snapshot.approvals[0].status, "pending");
+  assert.equal(snapshot.approvals[0].quoteId, snapshot.recommendations[0].quoteId);
+  assert.equal(snapshot.approvals[0].packet.proposed.supplierName, snapshot.recommendations[0].supplierName);
   assert.equal(snapshot.recommendations[0].humanApprovalRequired, true);
   assert.equal(snapshot.recommendations[0].commitmentExecuted, false);
   const ranked = [...snapshot.quotes].sort((a, b) => a.rank - b.rank);
@@ -159,10 +162,14 @@ test("Phase 8 persists normalized quotes, ranks offers, and stops before approva
   assert.ok(ranked.every(quote => quote.score.components.economics != null));
 
   const activityCount = snapshot.activity.filter(item => item.title.startsWith("Quote analysis recommends")).length;
+  const approvalActivityCount = snapshot.activity.filter(item => item.title.startsWith("Approval requested for")).length;
   snapshot = await mcp(runtime.baseUrl, 31, "vendor_scout_analyze_quotes", { missionId: "mission-lidar-500" });
+  assert.equal(snapshot.mission.status, "awaiting_approval");
   assert.equal(snapshot.quotes.length, 2);
   assert.equal(snapshot.recommendations.length, 1);
+  assert.equal(snapshot.approvals.length, 1);
   assert.equal(snapshot.activity.filter(item => item.title.startsWith("Quote analysis recommends")).length, activityCount, "idempotent re-analysis should not duplicate the analysis event");
+  assert.equal(snapshot.activity.filter(item => item.title.startsWith("Approval requested for")).length, approvalActivityCount, "idempotent re-analysis should not duplicate the approval event");
 });
 
 test("Phase 8 revalidates stale ready state when a stronger competitor appears", async t => {
@@ -179,8 +186,10 @@ test("Phase 8 revalidates stale ready state when a stronger competitor appears",
   assert.equal(first.status, "negotiating");
   assert.equal(second.negotiation.latestEvaluation.status, "ready_for_comparison");
   assert.equal(second.status, "offer_ready");
+  assert.equal(snapshot.mission.status, "awaiting_approval");
   assert.equal(snapshot.quotes.length, 1, "stale ready offer must not be ranked");
   assert.equal(snapshot.recommendations[0].supplierId, supplierIds[1]);
+  assert.equal(snapshot.approvals.length, 1);
 });
 
 test("Phase 8 requires provenance-backed FX before ranking a foreign-currency ready offer", async t => {
@@ -208,8 +217,8 @@ test("Phase 8 requires provenance-backed FX before ranking a foreign-currency re
     missionId: "mission-lidar-500",
     fxRates: [{ currency: "EUR", rateToBase: 1.16, sourceReference: "fx/ecb/2026-08-29", asOf: "2026-08-29" }]
   });
-  assert.equal(snapshot.mission.status, "comparing");
+  assert.equal(snapshot.mission.status, "awaiting_approval");
   assert.equal(snapshot.recommendations.length, 1);
   assert.equal(snapshot.quotes[0].fx.sourceReference, "fx/ecb/2026-08-29");
-  assert.equal(snapshot.approvals.length, 0);
+  assert.equal(snapshot.approvals.length, 1);
 });
