@@ -1,68 +1,72 @@
 # Status
 
-Current phase: Phase 1 complete / Phase 2 complete / Phases 3–4 implemented / Phase 5 integration foundation implemented / Phase 6 outreach implemented / Phase 7 autonomous negotiation implemented
-Current objective: Keep the complete sourcing → outreach → negotiation stack behind the required Qodo review chain, then implement Phase 8 normalized quote comparison and recommendation without introducing an acceptance/purchase path.
+Current phase: Phases 1–7 implemented / Phase 8 backend implemented and audited / Phase 8 UI pending / Phases 9–10 pending
+Current objective: Finish the judge-visible end-to-end TrueForge path: quote comparison UI → real TrueForge sandbox execution → explicit human approval pause → approved sample action, while restoring Qodo/public-repo submission compliance.
 
-Completed:
-- Preserved the existing Node 20 / vanilla frontend product shell while reframing Vendor Scout around autonomous procurement.
-- Phase 1: replaced supply-risk/data-healing product framing with Overview, Sourcing Missions, Suppliers, Conversations, and Approvals.
-- Phase 2: implemented the persistent Atlas Robotics 500-unit LiDAR sourcing mission with quantity, current supplier, current/target price, maximum lead time, allowed regions, minimum confidence, technical requirements, sample budget, and mission status.
-- Phase 2: wired validated server-side mission actions so lifecycle state is persisted rather than display-only and surfaced all mission constraints in the UI.
-- Hardened production boundaries: mutation endpoints default-deny without bearer credentials; development reset, fixture discovery fallback, and controlled outreach/counter preview are disabled by default in production.
-- Replaced destructive version reset with explicit migrations. Unknown versions fail closed. Current state contract is `2.3.0`.
-- Serialized in-process mutations and made local-file writes atomic with unique temporary paths.
-- Phase 3: executable supplier discovery with remote-provider contract, bounded validation, production HTTPS enforcement, source provenance, and explicit controlled fallback.
-- Phase 3: provenance-required ingestion for supplier research performed through TrueForge/live tools. Unknown commercial fields stay null rather than being invented.
-- Phase 4: deterministic, explainable qualification against region, confidence, technical fit, lead time, MOQ, and commercial plausibility.
-- Phase 5 foundation: persistent TrueForge sessions/non-blocking turns stored on the sourcing mission, plus authenticated MCP JSON-RPC bridge.
-- Phase 6: persistent one-thread-per-qualified-supplier RFQ conversations.
-- Phase 6: explicit non-binding RFQs requesting unit price, tiers, MOQ, availability, lead time, shipping, sample terms, certifications, and technical confirmation.
-- Phase 6: external supplier transport with bearer auth, response bounds, production HTTPS, provider message IDs, and stable `Idempotency-Key` values.
-- Phase 6: `.example` contacts cannot leak to live delivery; controlled preview sends nothing externally and never increments real supplier-contact metrics.
-- Phase 6: provenance-required, idempotent supplier reply persistence through HTTP and MCP.
-- Phase 6: partial-delivery retry remains possible after another supplier reply moves the mission into negotiation; already accepted suppliers are never resent.
-- Phase 7: added evidence-backed structured supplier offer terms anchored to a persisted inbound message by source reference/message ID.
-- Phase 7: structured offer model preserves explicit unit price/currency, quantity tiers, MOQ, availability, lead time, shipping terms/cost, samples, certifications, technical confirmation, and bounded notes. Missing terms remain unknown.
-- Phase 7: negotiation evaluation returns `needs_information`, `counter_required`, `ready_for_comparison`, or `reject_recommended` from explicit evidence.
-- Phase 7: evaluates same-currency price against the mission target and stronger persisted same-currency competitor offers, MOQ against mission quantity, lead time against the mission maximum, and explicit technical confirmation.
-- Phase 7: generated counters are goal-directed, non-binding, contain only evidence-backed asks, and never reveal competitor identities.
-- Phase 7: counter messages have stable IDs/idempotency keys and use the same retry-safe outreach transport as RFQs.
-- Phase 7: multi-round loop works end-to-end: supplier reply → structured offer → counter → transport → revised reply → revised offer → ready-for-comparison.
-- Phase 7: duplicate accepted counters are not resent.
-- Phase 7: explicit critical technical incompatibility stops automated countering for human judgment.
-- Phase 7: a strong offer becomes `offer_ready` / `ready_for_comparison`; it is not accepted and the mission intentionally remains `negotiating` until Phase 8 implements comparison.
-- Phase 7: `mission.execution.negotiationReady=true` marks that at least one persisted offer is ready for downstream comparison.
-- MCP surface now contains ten tools: mission read, discovery, live-research ingestion, qualification, RFQ prepare/send, supplier reply, structured offer recording, counter prepare, and counter send.
-- MCP contract explicitly exposes no acceptance, purchasing, sample-order, or place-order tool.
-- Updated the TrueForge prompt to run the persisted evidence chain and repeat negotiation rounds while stopping on ready-for-comparison or human-review states.
-- Conversations UI now renders RFQ evidence, reply provenance, latest structured offer, exact gap reasons/missing evidence, counter round, and controlled-vs-real delivery truth.
-- Added `docs/OUTREACH.md` and `docs/NEGOTIATION.md`, and updated README / TrueForge / public landing copy through Phase 7.
+## Completed
 
-Last verified:
-- Exact Phase 7 checkpoint commit `7281107ef16728b6e066d9bf251138dcf4b05e3a` passed both workflows.
-- `Vendor Scout CI` run `33283880448`: success.
-- `Vendor Scout Negotiation Browser` run `33283880447`: success.
-- `npm run check` passed on Node 20.20.2 with **48/48 tests**, 0 failures.
-- Full-process multi-round negotiation test passed with a mock real outreach provider, including duplicate counter-send prevention and Phase 7 stop-before-Phase-8 behavior.
-- MCP tests validate the ten-tool contract, safety/idempotency annotations, and absence of commitment tools.
-- Production-mode tests continue to validate default-deny mutation/MCP/fallback/preview/reset boundaries.
-- Migration tests preserve prior mission/supplier/conversation data and fail closed for unknown versions.
-- Mock TrueForge session/turn integration remains green.
-- Negotiation browser artifact `9723799032` was manually inspected: desktop shows the real Conversations view with persisted supplier reply, latest offer (`USD 410`, MOQ `600`, `28 days`), `Counter required`, and controlled counter-preview state; mobile routing/navigation remains intact.
+- Phase 1: procurement-focused Overview, Sourcing Missions, Suppliers, Conversations, and Approvals shell.
+- Phase 2: persistent Atlas Robotics 500-unit LiDAR mission with quantity, current supplier, target price, lead-time ceiling, allowed regions, confidence floor, technical requirements, sample budget, and validated mission lifecycle.
+- Production hardening: authenticated mutation/MCP boundaries, production-default-deny fixture fallback / outreach preview / dev reset, serialized mutations, atomic local-file writes, and fail-closed state migrations.
+- Phase 3: executable supplier discovery with provider contract, provenance, bounded validation, and explicitly labeled controlled fallback.
+- Phase 4: deterministic explainable qualification against region, confidence, technical fit, lead time, MOQ, and commercial plausibility.
+- Phase 5: persistent TrueForge session/turn adapter plus authenticated Streamable HTTP MCP bridge.
+- Phase 6: persistent supplier RFQ threads, non-binding RFQs, idempotent transport, controlled preview truth labels, provenance-backed replies, and partial-failure retries.
+- Phase 7: reply-anchored structured offers, explicit negotiation-gap evaluation, evidence-backed non-binding counters, multi-round retry-safe delivery, current competitor benchmarking, ready-for-comparison stop, and technical-conflict human-review stop.
+- Phase 7 Conversations UI shows RFQ/reply provenance, structured offer terms, exact gaps, counter rounds, and controlled-vs-real delivery state.
+- Phase 8 backend: deterministic quote normalization with quantity-tier selection, MOQ overbuy, original/base currency, provenance-backed FX, shipping, known total, complete landed cost, samples, lead time, supplier risk, savings, score components, rank, and recommendation.
+- Phase 8 revalidates every latest offer against the current competitor set before ranking; stale `offer_ready` state returns to negotiation instead of leaking into comparison.
+- Phase 8 comparison is conservative under missing landed costs: when any complete landed-cost offer exists, incomplete-shipping offers stay visible but cannot receive a final rank or beat the complete offer. If every otherwise-eligible offer is incomplete, any recommendation is explicitly provisional with missing-cost risks attached.
+- Phase 8 recommendation identity and analysis-event idempotency are stable across timestamp-only re-runs; unchanged analysis no longer creates duplicate recommendation activity.
+- MCP surface now contains 11 tools, including `vendor_scout_analyze_quotes`. There is still no term-acceptance, purchasing, sample-order, or place-order tool.
+- State contract is `2.4.0` and migrates explicitly from `2.0.0`–`2.3.0`.
+- `docs/OUTREACH.md`, `docs/NEGOTIATION.md`, and `docs/QUOTES.md` document the persisted contracts and safety boundaries.
 
-Review gate:
-- PR #2: `build/trueforge-orchestration` → `main`, intentionally unmerged. Both `/review` and `/agentic_review` were posted but no Qodo review/thread/check attached to this private repo.
-- PR #3: `build/supplier-outreach` → `build/trueforge-orchestration`, intentionally unmerged. `/agentic_review` was triggered and must not be bypassed.
-- Phase 7 is developed on stacked branch `build/autonomous-negotiation`; it should be proposed into `build/supplier-outreach` and left unmerged behind the same required review chain.
+## Audit findings still open
 
-External validation still required:
-- A real TrueForge runtime, saved `vendor-scout` agent, authenticated Vendor Scout MCP connector, live supplier research, real supplier-contact transport, and real supplier replies are not available in the current connected environment.
-- Development/CI therefore use explicitly labeled controlled research/contact evidence or mock transport servers. The repository intentionally does not present those as real supplier facts/messages.
+These are submission-critical rather than optional polish:
 
-Production boundary:
-- `FileDemoStore` is sufficient for a single-process hackathon deployment and is covered by restart-persistence tests, but it is not a multi-instance transactional database. Durable concurrent storage remains required before broad production use.
+1. **TrueForge must be judge-visible and real.** The adapter matches the current TrueForge session API, but a live configured TrueForge runtime has not yet been exercised against this repo. The final demo still needs TrueForge itself to call Vendor Scout through MCP.
+2. **Sandbox execution is not yet in the Vendor Scout agent loop.** Phase 8 currently computes deterministically inside Vendor Scout; the final TrueForge turn must visibly run generated comparison/verification code in the TrueForge sandbox because the hackathon explicitly requires it.
+3. **Human approval is not yet a real TrueForge checkpoint.** The UI has an approval boundary, but no consequential Phase 9/10 action exists yet for TrueForge to pause before. The final path needs a gated sample-order action and a visible harness approval pause before execution.
+4. **Phase 8 is not judge-visible yet.** `public/` has no quote-comparison/recommendation rendering. The Approvals view currently shows only the boundary text.
+5. **README / TrueForge docs are stale at Phase 7.** They still say 10 tools / Phase 8 pending and do not yet document the final sandbox + approval demo path.
+6. **Qodo review is not satisfied.** PRs #2, #3, and #4 have review-trigger comments but currently no submitted Qodo reviews. They must remain unmerged until Qodo is actually installed/authorized, findings are handled, and a follow-up review exists.
+7. **PR #1 was already merged without Qodo review.** This cannot be retroactively converted into a before-merge review; all remaining substantive merges must follow the required Qodo trail exactly.
+8. **Repository is currently private.** Hackathon submission requires a public source repository. Visibility must be changed before submission after secrets/private data are checked.
+9. **Submission metadata is incomplete.** README still needs `## Qodo Code Review Evidence`, AI coding-assistant disclosure, final setup steps, and the representative reviewed PR link. A public open-source license also needs to be chosen/added before final publication.
+10. **Production deployment is read-only by design.** Browser mutation / TrueForge run controls are hidden in production, so the current interactive harness demo is local-development-first. Final demo instructions must make starting Vendor Scout + TrueForge reliable and short.
 
-Next:
-- Open the stacked Phase 7 PR from `build/autonomous-negotiation` into `build/supplier-outreach`, trigger Qodo, and leave it unmerged until the required review exists.
-- Implement Phase 8 on a new stacked branch: normalize finalized offers into comparable quote records, compute landed cost/savings, rank offers, and generate an evidence-backed recommendation.
-- Preserve the same hard boundary: Phase 8 may recommend and prepare an approval packet, but it must not accept terms, place an order, or spend money.
+## Review gate
+
+- PR #1: merged into `main`; no submitted Qodo review is present.
+- PR #2: `build/trueforge-orchestration` → `main`; open and intentionally unmerged. `/review` and `/agentic_review` were posted, but no submitted Qodo review is present.
+- PR #3: `build/supplier-outreach` → `build/trueforge-orchestration`; open and intentionally unmerged. `/agentic_review` was posted, but no submitted Qodo review is present.
+- PR #4: `build/autonomous-negotiation` → `build/supplier-outreach`; open and intentionally unmerged. `/agentic_review` was posted, but no submitted Qodo review is present.
+- Phase 8 remains on `build/quote-comparison`; do not open/merge its stacked PR until the audited backend and judge-visible UI are green.
+
+## Verification
+
+Last fully verified Phase 7 checkpoint:
+- 48/48 Node tests passed on Node 20.20.2.
+- dedicated negotiation browser workflow passed on desktop/mobile.
+- multi-round real-provider mock negotiation, duplicate-send prevention, provenance, auth/default-deny, migrations, and TrueForge session/turn mocks were green.
+
+Phase 8 audit verification:
+- prior Phase 8 suite reached 57/58; the sole failure was traced to timestamp-only analysis signature churn and fixed.
+- audit then added conservative missing-landed-cost ranking and stable cross-day recommendation identity tests.
+- this STATUS commit intentionally triggers a fresh full CI run on the final audited Phase 8 code head; record the exact final test count/run here only after that run is green.
+
+## Next execution order
+
+1. Confirm audited Phase 8 full CI is green.
+2. Build the visual quote comparison / recommendation packet and dedicated desktop/mobile browser evidence.
+3. Update the TrueForge mission prompt/config to call the 11th quote-analysis tool and visibly use the TrueForge sandbox to verify comparison math.
+4. Implement Phase 9 approval state and Phase 10 sample action with both Vendor Scout server-side gating and TrueForge human tool approval.
+5. Prove the complete local demo through the actual TrueForge UI/session: real MCP call → sandbox code → recommendation → human pause → approved action.
+6. Fix Qodo installation/review trail before merging any remaining substantive PR.
+7. Finish public-repo readiness: secrets scan, license, README setup/Qodo evidence/AI disclosure, demo script/video, and submission write-up.
+
+## Production note
+
+`FileDemoStore` remains appropriate for a single-process hackathon demo and has restart-persistence coverage. It is not a multi-instance transactional database and should not be presented as production-scale persistence.
