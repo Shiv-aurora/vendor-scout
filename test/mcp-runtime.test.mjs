@@ -87,33 +87,43 @@ test("MCP tools execute the persisted Mission → Discover → Qualify workflow"
   let rpc = await mcp(runtime.baseUrl, 1, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test-client", version: "1" } });
   assert.equal(rpc.result.protocolVersion, "2025-06-18");
   assert.equal(rpc.result.serverInfo.name, "vendor-scout");
+  assert.equal(rpc.result.serverInfo.version, "0.5.0");
   assert.equal(rpc.result.capabilities.tools.listChanged, false);
 
   response = await postJson(`${runtime.baseUrl}/mcp`, { jsonrpc: "2.0", method: "notifications/initialized", params: {} });
   assert.equal(response.status, 202);
 
   rpc = await mcp(runtime.baseUrl, 2, "tools/list");
-  assert.equal(rpc.result.tools.length, 7);
-  const readTool = rpc.result.tools.find(tool => tool.name === "vendor_scout_get_mission");
-  const discoverTool = rpc.result.tools.find(tool => tool.name === "vendor_scout_discover_suppliers");
-  const recordTool = rpc.result.tools.find(tool => tool.name === "vendor_scout_record_supplier_candidates");
-  const prepareTool = rpc.result.tools.find(tool => tool.name === "vendor_scout_prepare_rfqs");
-  const sendTool = rpc.result.tools.find(tool => tool.name === "vendor_scout_send_rfqs");
-  const replyTool = rpc.result.tools.find(tool => tool.name === "vendor_scout_record_supplier_reply");
-  assert.ok(readTool && discoverTool && recordTool && prepareTool && sendTool && replyTool);
-  assert.equal(readTool.annotations.readOnlyHint, true);
-  assert.equal(discoverTool.annotations.openWorldHint, true);
-  assert.equal(discoverTool.annotations.destructiveHint, false);
-  assert.equal(recordTool.annotations.openWorldHint, false);
-  assert.equal(recordTool.inputSchema.properties.candidates.maxItems, 50);
-  assert.equal(prepareTool.annotations.idempotentHint, true);
-  assert.equal(prepareTool.annotations.openWorldHint, false);
-  assert.equal(sendTool.annotations.idempotentHint, true);
-  assert.equal(sendTool.annotations.openWorldHint, true);
-  assert.equal(sendTool.annotations.destructiveHint, false);
-  assert.equal(replyTool.annotations.idempotentHint, true);
-  assert.equal(replyTool.annotations.destructiveHint, false);
-  assert.ok(replyTool.inputSchema.required.includes("sourceReference"));
+  assert.equal(rpc.result.tools.length, 10);
+  const names = rpc.result.tools.map(tool => tool.name);
+  for (const expected of [
+    "vendor_scout_get_mission",
+    "vendor_scout_discover_suppliers",
+    "vendor_scout_record_supplier_candidates",
+    "vendor_scout_qualify_suppliers",
+    "vendor_scout_prepare_rfqs",
+    "vendor_scout_send_rfqs",
+    "vendor_scout_record_supplier_reply",
+    "vendor_scout_record_offer_terms",
+    "vendor_scout_prepare_counter",
+    "vendor_scout_send_counter"
+  ]) assert.ok(names.includes(expected), `missing MCP tool ${expected}`);
+
+  const byName = name => rpc.result.tools.find(tool => tool.name === name);
+  assert.equal(byName("vendor_scout_get_mission").annotations.readOnlyHint, true);
+  assert.equal(byName("vendor_scout_discover_suppliers").annotations.openWorldHint, true);
+  assert.equal(byName("vendor_scout_record_supplier_candidates").inputSchema.properties.candidates.maxItems, 50);
+  assert.equal(byName("vendor_scout_prepare_rfqs").annotations.openWorldHint, false);
+  assert.equal(byName("vendor_scout_send_rfqs").annotations.openWorldHint, true);
+  assert.ok(byName("vendor_scout_record_supplier_reply").inputSchema.required.includes("sourceReference"));
+  assert.ok(byName("vendor_scout_record_offer_terms").inputSchema.required.includes("sourceReference"));
+  assert.equal(byName("vendor_scout_record_offer_terms").annotations.openWorldHint, false);
+  assert.equal(byName("vendor_scout_prepare_counter").annotations.openWorldHint, false);
+  assert.equal(byName("vendor_scout_prepare_counter").annotations.idempotentHint, true);
+  assert.equal(byName("vendor_scout_send_counter").annotations.openWorldHint, true);
+  assert.equal(byName("vendor_scout_send_counter").annotations.destructiveHint, false);
+  assert.equal(byName("vendor_scout_send_counter").annotations.idempotentHint, true);
+  assert.ok(!names.some(name => /accept|purchase|order_sample|place_order/.test(name)), "MCP surface must not expose a commitment tool");
 
   rpc = await mcp(runtime.baseUrl, 3, "tools/call", { name: "vendor_scout_get_mission", arguments: { missionId: "mission-lidar-500" } });
   assert.equal(rpc.result.structuredContent.mission.status, "draft");
