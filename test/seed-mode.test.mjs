@@ -40,6 +40,19 @@ test("approval-ready seed is contract-valid and stops at one pending human decis
   assert.equal(state.approvals[0].decision, null);
   assert.equal(state.approvals[0].decidedAt, null);
   assert.deepEqual(state.sampleOrders, []);
+
+  const activityTimes = state.activity.map(item => Date.parse(item.at));
+  assert.ok(activityTimes.every(Number.isFinite));
+  assert.ok(activityTimes.every((value, index) => index === 0 || value >= activityTimes[index - 1]), "activity must remain chronological in insertion order");
+  assert.equal(state.activity.at(-2).stage, "compare");
+  assert.equal(state.activity.at(-1).stage, "approval");
+
+  for (const conversation of state.conversations) {
+    const messageTimes = conversation.messages.map(message => Date.parse(message.createdAt));
+    assert.ok(messageTimes.every((value, index) => index === 0 || value >= messageTimes[index - 1]), "conversation messages must not move backward");
+    assert.ok(Date.parse(conversation.negotiation.latestEvaluation.evaluatedAt) >= Math.max(...messageTimes));
+    assert.ok(Date.parse(conversation.updatedAt) >= Math.max(...messageTimes));
+  }
 });
 
 test("approval-ready seed matches the existing controlled decision demo economics and provenance", () => {
