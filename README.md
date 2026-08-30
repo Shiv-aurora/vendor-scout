@@ -147,7 +147,9 @@ Vendor Scout does not rely on prompt text as its only guardrail.
 - quote analysis cannot accept terms or spend money
 - comparison creates a pending Approval packet
 - business approval does not execute the action
+- non-orderable sample recommendations cannot be approved into a dead-end state
 - sample execution requires a matching persisted human approval
+- sample price and currency must still match the human-approved spend snapshot
 - the sample-order MCP tool is explicitly destructive for the TrueForge harness gate
 - sample cost must remain within the mission budget
 - sample execution is idempotent across retries
@@ -249,6 +251,8 @@ Production defaults deny fixture fallbacks/previews and require configured beare
 npm run check
 ```
 
+The current reviewed code checkpoint passes **73/73 tests** plus the dedicated decision, outreach, and negotiation browser workflows.
+
 Validation covers:
 
 - sourcing mission lifecycle
@@ -264,12 +268,16 @@ Validation covers:
 - multi-round negotiation
 - stale-offer revalidation
 - FX provenance
-- quantity-tier and MOQ normalization
+- quantity-tier and MOQ normalization, including MOQ-crossed pricing tiers
+- MOQ-aware pre-shipping savings
 - landed cost and conservative incomplete-cost handling
 - transparent quote scoring/ranking
-- approval packet creation
+- approval packet creation and fresh approval cycles after `Keep negotiating`
+- denial of non-orderable approval packets
 - Approve / Keep negotiating / Reject paths
 - denial of sample execution before business approval
+- approved sample price/currency drift protection
+- streaming sample-provider response bounds
 - sample budget checks
 - sample execution idempotency
 - real-vs-controlled order truth
@@ -303,15 +311,43 @@ Development used OpenAI/ChatGPT-assisted engineering for implementation, debuggi
 
 ## Qodo Code Review Evidence
 
-**Current status: required external review evidence is still pending.**
+Representative PR: [#5 — Complete quote comparison, human approval, and approved sample action](https://github.com/Shiv-aurora/vendor-scout/pull/5)
 
-PR [#5](https://github.com/Shiv-aurora/vendor-scout/pull/5) has two `/agentic_review` requests and green repository checks, but the Qodo GitHub App has attached **zero submitted reviews**. Those command comments are **not** being represented as completed Qodo review evidence.
+Qodo submitted a real review on August 30, 2026 and identified **six material findings**: five high-severity correctness/security findings and one medium reliability finding.
 
-The remaining external action is to sign in to GitHub, install/authorize [Qodo Merge Pro](https://github.com/marketplace/qodo-merge-pro) for this repository, and trigger a fresh review on PR #5.
+The findings were:
 
-No remaining substantive implementation PR should be merged until Qodo is correctly authorized, its findings are addressed or explicitly dismissed with rationale, and follow-up review is requested where required.
+1. MOQ-constrained orders selected a quantity tier using the requested quantity rather than the actual purchased quantity.
+2. Pre-shipping savings could ignore mandatory MOQ overbuy.
+3. A recommendation with no orderable in-budget sample could be approved into a dead-end `approved` state.
+4. The sample-order provider response limit buffered the full response before enforcing its byte cap.
+5. Changed sample price/availability could bypass fresh human approval semantics.
+6. A `returned_to_negotiation` approval could block creation of a later pending approval cycle.
 
-Once the GitHub App is authorized, this section should link the representative final Qodo-reviewed PR and summarize the reviewed findings/fixes before submission.
+All six were fixed; none were dismissed.
+
+Remediation included MOQ-aware tier/savings accounting, non-executable approval enforcement, incremental provider-response bounds, immutable human-approved sample spend checks, and distinct approval decision cycles. Regression tests were added for each failure mode.
+
+Clean reviewed code head: `e191c917f347c99e4bfd7612eca822191d38f578`.
+
+Validation on that head:
+
+- `Vendor Scout CI` run `33294895719`: **73/73 tests passed**
+- Decision Browser run `33294895726`: **success**
+- Outreach Browser run `33294895718`: **success**
+- Negotiation Browser run `33294895778`: **success**
+
+Qodo's live review summary has re-evaluated the remediation and now reports **`Bugs (0)`**, **`Rule violations (0)`**, and marks all six original findings **Resolved**:
+
+<https://github.com/Shiv-aurora/vendor-scout/pull/5#issuecomment-5466842962>
+
+Each Qodo thread also contains a specific response linking the fix and regression evidence. A follow-up `/agentic_review` was requested after remediation:
+
+<https://github.com/Shiv-aurora/vendor-scout/pull/5#issuecomment-5466942032>
+
+At the time this evidence was recorded, GitHub still showed the original submitted Qodo review object rather than a second submitted review object. This README therefore does **not** invent a second review; it records the actual submitted review, Qodo's resolved live re-evaluation state, and the explicit follow-up request.
+
+See [`docs/QODO_REVIEW.md`](docs/QODO_REVIEW.md) for the finding-by-finding remediation record.
 
 ## Project documentation
 
@@ -322,7 +358,7 @@ Once the GitHub App is authorized, this section should link the representative f
 - [`docs/OUTREACH.md`](docs/OUTREACH.md) — RFQ transport contract
 - [`docs/NEGOTIATION.md`](docs/NEGOTIATION.md) — structured offer + negotiation loop
 - [`docs/QUOTES.md`](docs/QUOTES.md) — quote normalization/ranking contract
-- [`docs/QODO_REVIEW.md`](docs/QODO_REVIEW.md) — Qodo review focus
+- [`docs/QODO_REVIEW.md`](docs/QODO_REVIEW.md) — Qodo review/remediation evidence
 
 ## Production boundary
 
