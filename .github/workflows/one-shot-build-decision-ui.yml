@@ -1,0 +1,26 @@
+name: One-shot build decision UI
+
+on:
+  push:
+    branches: ["build/final-product-copy2"]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python scripts/build_decision_ui.py
+      - run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f scripts/build_decision_ui.py .github/workflows/one-shot-build-decision-ui.yml
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m 'build quote comparison and human approval command center'
+          git push origin HEAD:build/final-product-copy2
