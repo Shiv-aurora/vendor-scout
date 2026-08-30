@@ -1,8 +1,8 @@
 # Status
 
-Current phase: **Phases 1–15 and the live TrueForge integration proof are complete.** The remaining gates are external hackathon actions, not missing Vendor Scout product phases.
+Current phase: **Phases 1–15, the live TrueForge integration proof, and the first Qodo remediation cycle are complete.**
 
-Current objective: preserve the green PR #5 branch while completing a **real Qodo review** and the final submission/video.
+Current objective: preserve the green final PR #5 branch, confirm the requested Qodo follow-up produces no new material findings, then record the final demo/video and submit.
 
 ## Product complete
 
@@ -14,105 +14,126 @@ Current objective: preserve the green PR #5 branch while completing a **real Qod
 - Phase 6 — persistent RFQs/conversations, idempotent outreach, provenance-backed replies, and partial-failure retry safety.
 - Phase 7 — evidence-anchored offers, goal-directed multi-round negotiation, competitor-aware counters, and human stop on critical technical conflict.
 - Phase 8 — deterministic quote normalization/ranking across quantity tiers, MOQ overbuy, FX provenance, shipping/landed cost, lead time, sample terms, supplier risk, savings, and transparent component scoring.
-- Phase 8 audit hardening — stale `offer_ready` state is revalidated; analysis/recommendation identity ignores timestamp-only differences; incomplete landed-cost offers remain visible but cannot beat a complete landed-cost offer by omitting unknown shipping.
-- Phase 9 — real decision packet with current/proposed economics, landed-cost completeness, savings, lead/MOQ/shipping, supplier evidence/risk, samples, competing offers, recommendation reasons/risks, and source references.
-- Phase 9 — explicit `Approve sample` / `Keep negotiating` / `Reject`; approval records a business decision but does not execute the action.
+- Phase 9 — decision packet plus explicit `Approve sample` / `Keep negotiating` / `Reject`; business approval never executes the action itself.
 - Phase 10 — approval-gated sample action with stable idempotency key, budget enforcement, live provider contract, controlled simulation truth, and replay-safe completed state.
-- Phase 11 — Overview/activity plus supplier/conversation/decision state makes autonomous progress understandable without logs.
-- Phase 12 — deterministic `npm run demo:decision`, controlled fallbacks, dedicated browser workflows, and truthful real-vs-controlled states.
-- Phase 13 — polished decision hierarchy, responsive command center, comparison cards, recommendation hero, visible pending/approved/completed distinctions, and strong empty/error states.
-- Phase 14 — full unit/process/runtime/browser verification.
-- Phase 15 — final README story/architecture/setup, `docs/DEMO.md`, Qodo review checklist, AI-assistance/reused-shell disclosure, MIT license, and external integration handoff.
+- Phase 11 — visible mission/activity/conversation/decision state without relying on logs.
+- Phase 12 — deterministic demo builder, controlled fallbacks, dedicated browser workflows, and truthful real-vs-controlled states.
+- Phase 13 — responsive command-center and decision-climax polish.
+- Phase 14 — unit/process/runtime/browser verification.
+- Phase 15 — final README, architecture/setup, `docs/DEMO.md`, Qodo evidence, AI-assistance/reused-shell disclosure, MIT license, and integration handoff.
 
-## Final TrueForge safety/integration details
+## TrueForge proof — complete
 
-- MCP exposes **12 tools**.
-- `vendor_scout_execute_sample_order` is explicitly `destructiveHint: true`, `openWorldHint: true`, and `idempotentHint: true` and is documented for TrueForge `require_approval_for_tools`.
-- Vendor Scout independently requires a persisted human-approved decision, matching quote/action, sample availability, and budget compliance before execution.
-- Mission instructions require TrueForge sandbox/code execution to independently check quote arithmetic before deterministic persisted analysis.
-- Vendor Scout persists TrueForge session/turn IDs and required actions.
-- `start_trueforge_turn` now refuses to start a new normal turn while required actions remain unresolved.
-- `resume_trueforge_approval` validates that every supplied `(threadId, toolCallId)` exactly matches the pending approval refs from the last persisted TrueForge turn; stale/invented/duplicate/partial refs are rejected.
-- The raw TrueForge REST client serializes approval input using the current wire fields `thread_id` / `tool_call_id`; SDK-facing camelCase is not incorrectly sent to the raw endpoint.
-- The command center never auto-approves the TrueForge destructive pause; when required actions exist it tells the operator to resolve them in TrueForge.
+The real integration was executed locally with TrueForge `0.1.4`, Node 22, a local Ollama `gemma4:e4b` tool-calling model, TrueForge sandbox execution, and Vendor Scout's authenticated Streamable HTTP MCP endpoint.
 
-Current state contract: `2.5.0`. Known prior procurement contracts migrate non-destructively; unknown versions fail closed.
-
-Production defaults deny mutation/MCP access without configured credentials and disable fixture discovery, outreach preview, sample preview, and dev reset unless explicitly enabled.
-
-## Live TrueForge proof — 2026-08-30
-
-The real integration was executed locally with the official TrueForge `0.1.4` package, Node 22, a local Ollama `gemma4:e4b` tool-calling model, TrueForge's local sandbox fallback, and Vendor Scout's authenticated Streamable HTTP MCP endpoint.
-
-- Saved TrueForge agent: `vendor-scout` (`01m18dwdy3fgevk63c69rq3sym`), sandbox enabled, all 12 Vendor Scout tools loaded, and `vendor_scout_execute_sample_order` in `require_approval_for_tools`.
+- Saved TrueForge agent: `vendor-scout` (`01m18dwdy3fgevk63c69rq3sym`).
 - Persistent proof session: `01m18epjskwyd64p61d928dmvs`.
-- Real MCP calls included RFQ preparation/delivery and quote analysis. Quote-analysis turn `01m18er3e2spychp4ayxwgh50r.local` called `vendor_scout_analyze_quotes` and moved the mission to `awaiting_approval`.
-- TrueForge sandbox turn `01m18f2hrgn9xv8njna7fy4jm5.local` executed Python successfully and independently recomputed the evidence: baseline `214500`, HelioMotion landed `191900` / savings `22600`, ScanWorks landed `192300` / savings `22200`, with HelioMotion lower on landed cost.
-- Vendor Scout business approval `approval-df79ff4bf58b85a40e` changed the mission to `approved` while `sampleOrders=[]`; it did not execute the sample action.
-- Destructive-tool turn `01m18f5y4cdbkrd8zyqvhqrarr.local` produced a real `tool.approval_required` for call `call_epjcdu5a`. Denying it resumed as `01m18famr4zassnrev3mkvvgm2.local`; TrueForge reported the denial and no order was created.
-- Fresh destructive-tool turn `01m18fj563czdnch7mh4f6pggd.local` paused again for call `call_ckb0ex5r`. Allowing that exact call resumed as `01m18fkwym2h91mtwh1hxqy4fm.local` and reached Vendor Scout execution.
-- Final persisted state is `completed` with one order: provider `controlled-sample-order`, status `simulated`, quantity `1`, total `USD 220`, and `externalOrderId=null`. No supplier communication or money movement occurred.
-- Live integration exposed one compatibility defect: TrueForge `0.1.4` accepts session creation at `POST /api/v1/sessions` but returned 404 for the former trailing-slash path. The adapter and regression tests now use the verified route.
-- Desktop approval UI rendered without an error. A device-metrics-emulated 390×844 check reported `innerWidth=390`, `documentWidth=390`, active `view-approvals`, and no workspace error.
-- `npm ci` completed with zero vulnerabilities; `npm run check` passed all 68 tests; the isolated `npm run demo:decision` reached `awaiting_approval`; and live health, dashboard, capabilities, and authenticated MCP checks passed.
-- Repository publication audit scanned tracked files and all reachable commits for known credential/private-key forms, credential-bearing URLs, credential-like assignments, and unexpected credential files. It found no secrets; `.env.example` contains placeholders only. The repository was changed from private to **public** after the audit.
+- Quote-analysis turn: `01m18er3e2spychp4ayxwgh50r.local`.
+- Sandbox turn: `01m18f2hrgn9xv8njna7fy4jm5.local`.
+- Sandbox recomputed baseline `214500`, HelioMotion landed `191900` / savings `22600`, ScanWorks landed `192300` / savings `22200`.
+- Business approval changed the mission to `approved` while `sampleOrders=[]`.
+- Denial path: call `call_epjcdu5a`, resumed as `01m18famr4zassnrev3mkvvgm2.local`, no order executed.
+- Allow path: call `call_ckb0ex5r`, resumed as `01m18fkwym2h91mtwh1hxqy4fm.local`.
+- Final controlled sample: one `USD 220` action, provider `controlled-sample-order`, `simulated=true`, `externalOrderId=null`, no external spend.
+- Live integration exposed and fixed one compatibility defect: TrueForge `0.1.4` requires `POST /api/v1/sessions` without the former trailing slash.
+
+## Qodo review — first remediation cycle complete
+
+Representative PR:
+
+<https://github.com/Shiv-aurora/vendor-scout/pull/5>
+
+Qodo submitted a real review on 2026-08-30 and identified six material issues:
+
+1. MOQ-constrained orders could select the wrong quantity tier.
+2. Pre-shipping savings could ignore mandatory MOQ overbuy.
+3. A recommendation with no orderable sample could be approved into a dead-end mission state.
+4. The sample-order provider response limit buffered an unbounded response before checking size.
+5. Changed sample price/availability could bypass fresh approval semantics.
+6. A returned approval could block creation of a later pending decision cycle.
+
+All six were fixed. None were dismissed.
+
+The remediation additionally ensures:
+
+- tier selection uses actual MOQ-constrained `orderQuantity`;
+- savings uses MOQ-aware `itemSubtotalBase`;
+- non-executable approval packets cannot enter `approved`;
+- oversized chunked provider responses are cancelled while streaming;
+- quote-analysis identity includes raw sample evidence;
+- sample execution must exactly match the human-approved spend/currency snapshot;
+- `Keep negotiating` can produce a distinct pending approval cycle while preserving prior decisions.
+
+Qodo's live review summary now reports **Bugs (0)** and marks all six original findings **Resolved**:
+
+<https://github.com/Shiv-aurora/vendor-scout/pull/5#issuecomment-5466842962>
+
+Each review thread also has a specific remediation/test reply. A follow-up `/agentic_review` was requested after the clean remediation:
+
+<https://github.com/Shiv-aurora/vendor-scout/pull/5#issuecomment-5466942032>
+
+At this checkpoint GitHub still shows only the original submitted Qodo review object; do not invent a second review object until Qodo posts one. Its live review state has already re-evaluated the remediation and resolved all findings.
+
+Detailed evidence: [`docs/QODO_REVIEW.md`](QODO_REVIEW.md).
 
 ## Latest verified code-bearing checkpoint
 
-Commit `58ac8bb3ef3da9e3eb403ce1c174642f9a4822c5` on `build/final-product-copy2` contains the final runtime code including the TrueForge approval-resume path. Later commits only update documentation/handoff text.
+Commit:
+
+`e191c917f347c99e4bfd7612eca822191d38f578`
+
+on `build/final-product-copy2`.
 
 ### Full CI
 
-- `Vendor Scout CI` run `33287628330`: **success**.
+- `Vendor Scout CI` run `33294895719`: **success**.
 - Node `20.20.2`.
-- `npm run check`: **68/68 tests passed, 0 failed**.
-- server/browser syntax checks passed.
+- `npm run check`: **73/73 tests passed, 0 failed**.
 - runtime `/health` and `/api/dashboard` smoke passed.
-- desktop/mobile Chromium smoke and artifact upload passed.
-- browser-smoke artifact: `9724929519`.
+- desktop/mobile Chromium smoke passed.
+- browser-smoke artifact `9727097122` uploaded.
 
-Test coverage includes:
+### Browser workflows on the same code head
 
-- sourcing lifecycle and approval non-bypass
-- provenance/discovery/qualification
-- production auth/default-deny behavior
-- migrations + restart persistence
-- persistent TrueForge sessions/turns
-- raw REST `user.tool_approval` serialization
-- rejection of stale/invented TrueForge approval refs
-- blocking normal turns while approval-required state remains unresolved
-- persisted approval-resume turn chaining
-- 12-tool MCP contract + destructive sample-tool annotations
-- outreach/counter idempotency and partial-failure retry
-- supplier reply / structured offer provenance
-- multi-round negotiation and critical technical-conflict stop
-- FX provenance, tiers, MOQ overbuy, landed cost, stale-offer revalidation, conservative incomplete-cost ranking, stable recommendation identity
-- approval packet creation/idempotency and Approve / Keep negotiating / Reject
-- denial of sample execution before business approval
-- sample budget/provider/idempotency behavior
-- controlled-vs-real sample action truth
+- `Vendor Scout Decision Browser` run `33294895726`: **success**.
+- `Vendor Scout Outreach Browser` run `33294895718`: **success**.
+- `Vendor Scout Negotiation Browser` run `33294895778`: **success**.
 
-### Decision browser
+The five additional post-Qodo regressions cover:
 
-- `Vendor Scout Decision Browser` run `33287628345`: **success**.
-- artifact `9724935936`: `vendor-scout-decision-browser`.
-- workflow built the approval-ready mission, rendered pending decision desktop/mobile, recorded business approval while proving `sampleOrders=[]`, rendered the still-gated state, executed the controlled sample MCP action, and rendered the completed simulation state.
-- the final hierarchy remains: recommendation → human decision/execution gate → detailed quote comparison.
+- MOQ-driven quantity-tier selection;
+- MOQ-aware pre-shipping savings;
+- non-orderable approval denial;
+- sample-price drift requiring fresh approval;
+- streaming provider response bounds;
+- the approval runtime test was also strengthened to prove a fresh second approval cycle (`cycle === 2`).
 
-## PR / Qodo merge gate
+## Safety / production details
 
-- PR #2 `build/trueforge-orchestration → main`: open; commands posted; **no submitted Qodo review exists**.
-- PR #3 `build/supplier-outreach → build/trueforge-orchestration`: open; command posted; **no submitted Qodo review exists**.
-- PR #4 `build/autonomous-negotiation → build/supplier-outreach`: open; command posted; **no submitted Qodo review exists**.
-- PR #5 `build/final-product-copy2 → build/autonomous-negotiation`: open and mergeable; `/agentic_review` requested; **do not merge until an actual Qodo review exists and findings are addressed/dismissed with rationale**.
-- Historical compliance note: PR #1 was merged before Qodo review evidence existed. This cannot be retroactively changed and must not be represented as reviewed.
+- MCP exposes 12 tools.
+- `vendor_scout_execute_sample_order` remains destructive/open-world/idempotent and is configured for TrueForge `require_approval_for_tools`.
+- Vendor Scout independently requires a matching persisted human approval before execution.
+- sample spend must still match the approved price/currency snapshot and remain within budget.
+- production mutation/MCP endpoints remain default-deny without credentials.
+- fixture discovery, outreach preview, sample preview, and dev reset remain disabled by default in production.
+- controlled evidence/actions remain explicitly labeled; controlled sample execution never claims external spend.
 
-## External gates still required
+Current state contract: `2.5.0`. Known prior procurement contracts migrate non-destructively; unknown versions fail closed.
 
-1. **Qodo** — the Qodo GitHub App must be installed/authorized for `Shiv-aurora/vendor-scout`, then an actual review must be obtained on PR #5. The install page requires an authenticated interactive GitHub browser session that was unavailable in this run. Two `/agentic_review` comments exist, but PR #5 still has zero submitted reviews; those comments are not review evidence.
-2. **Submission/video** — record the one-story demo in `docs/DEMO.md` and link the public repo, representative reviewed PR/Qodo evidence, and final assets.
-3. **Deployment** — no public deployment was created or modified in this run. Do not claim one until it is independently verified.
+## Repository / PR state
 
-## Codex integration result
+- Repository is **public** and includes an MIT license.
+- PR #5 is open and intentionally unmerged.
+- PRs #2–#4 remain open in the stacked chain.
+- `main` remains untouched by the final branch work.
+- Historical note: PR #1 was merged before Qodo review evidence existed; this cannot be retroactively corrected and must not be represented as reviewed.
 
-The scoped Codex handoff was executed on `build/final-product-copy2`. The real runtime proof and the one compatibility fix are recorded above. PR #5 remains open and must remain unmerged until the external Qodo gate is satisfied.
+## Remaining submission gates
+
+1. **Qodo final confirmation** — inspect the follow-up `/agentic_review`; fix any genuinely new material finding if one appears. Do not merge while a new Qodo finding is outstanding.
+2. **Video / submission** — record the one-story demo in `docs/DEMO.md` and link the public repo plus PR #5/Qodo evidence.
+3. **Deployment** — optional unless required by the submission; do not claim a public deployment until independently verified.
+
+## Merge rule
+
+Do **not** manually merge PR #5 or the stacked PR chain during automated engineering/review work. Leave the final merge decision to the owner after Qodo/submission evidence is inspected.
