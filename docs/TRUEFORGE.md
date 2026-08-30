@@ -1,12 +1,12 @@
 # TrueForge Integration
 
-Vendor Scout uses TrueForge as the persistent agent orchestration layer and exposes the sourcing mission itself as an MCP tool surface.
+Vendor Scout uses TrueForge as the persistent agent orchestration layer and exposes the sourcing mission as an MCP tool surface.
 
 The separation is intentional:
 
-- **Vendor Scout** owns procurement state, validation, evidence, RFQ/conversation state, UI, and the human commitment boundary.
+- **Vendor Scout** owns procurement state, validation, evidence, supplier conversations, structured offers, negotiation-gap logic, UI, and the human commitment boundary.
 - **TrueForge** owns the persistent agent session, model/tool loop, external research/communication tools when configured, sandbox/subagents when useful, and long-running turn state.
-- **MCP** is the bridge that lets the TrueForge agent read and advance the same Vendor Scout mission used by the UI/API.
+- **MCP** lets TrueForge read and advance the same Vendor Scout mission used by the UI/API.
 
 ## Runtime topology
 
@@ -17,20 +17,18 @@ Vendor Scout UI
 Vendor Scout Node server ───────────────┐
   mission + supplier state              │ TrueForge session API
   RFQ + conversation state              ▼
-  /api/missions/...               TrueForge persistent session
-  /mcp  ◄───────────────────────────────┤
-      ▲                                  │
-      │                                  ├─ live web/research tools
-      └──── Vendor Scout MCP connector ──┤
-                                         ├─ sandbox/code execution
-                                         └─ subagents when useful
+  offer + negotiation evidence    TrueForge persistent session
+  /api/missions/...               │
+  /mcp  ◄─────────────────────────┤
+      ▲                            ├─ live research tools
+      └── Vendor Scout connector ──┤
+                                   ├─ inbox/communication tools
+                                   └─ sandbox/subagents
 ```
 
-Vendor Scout remains Node 20 compatible. Current TrueForge packages require Node 22+, so run TrueForge as its own service instead of importing its SDK into this process.
+Vendor Scout remains Node 20 compatible. Current TrueForge packages require Node 22+, so run TrueForge as a separate service rather than importing its SDK into Vendor Scout.
 
 ## 1. Start TrueForge
-
-For a local TrueForge runtime, use its current CLI:
 
 ```bash
 npx @truefoundry/trueforge
@@ -42,11 +40,9 @@ The normal local API/UI origin is:
 http://localhost:8790
 ```
 
-A hosted TrueForge deployment may use OIDC. In that case provide its bearer/ID token to Vendor Scout through `TRUEFORGE_TOKEN`.
+A hosted TrueForge deployment may use OIDC. Provide its bearer/ID token to Vendor Scout through `TRUEFORGE_TOKEN` when required.
 
 ## 2. Configure Vendor Scout credentials
-
-Use strong independent tokens outside local development:
 
 ```bash
 export VENDOR_SCOUT_AGENT_TOKEN='<strong-random-token>'
@@ -55,9 +51,7 @@ export VENDOR_SCOUT_MCP_TOKEN='<strong-random-token>'
 
 `VENDOR_SCOUT_MCP_TOKEN` is optional; when absent, Vendor Scout reuses `VENDOR_SCOUT_AGENT_TOKEN` for `/mcp`.
 
-Do not commit either credential.
-
-For real supplier contact, also configure a transport that implements the contract in `docs/OUTREACH.md`:
+For real supplier communication, configure the transport described in `docs/OUTREACH.md`:
 
 ```bash
 export VENDOR_SCOUT_OUTREACH_URL='https://your-outreach-adapter.example/send'
@@ -68,41 +62,46 @@ Production controlled preview is disabled unless `VENDOR_SCOUT_ALLOW_OUTREACH_PR
 
 ## 3. Add Vendor Scout as a TrueForge MCP connector
 
-Create a configured MCP server in TrueForge named:
+Create a TrueForge MCP server named:
 
 ```text
 vendor-scout
 ```
 
-Point it at the Vendor Scout Streamable HTTP endpoint:
+Point it to the Vendor Scout Streamable HTTP endpoint:
 
 ```text
 http://localhost:3000/mcp
 ```
 
-If TrueForge and Vendor Scout run on different hosts/containers, use the network-reachable Vendor Scout URL instead of `localhost`.
+Use a network-reachable URL when the two services run on different hosts/containers.
 
-Configure the connector's authorization header with the same bearer value as `VENDOR_SCOUT_MCP_TOKEN`:
+Configure:
 
 ```text
 Authorization: Bearer <VENDOR_SCOUT_MCP_TOKEN>
 ```
 
-The connector exposes seven tools:
+## 4. MCP tool surface
+
+The connector exposes **ten** tools:
 
 | Tool | Effect |
 | --- | --- |
-| `vendor_scout_get_mission` | Read current persisted mission, supplier evidence, RFQs, replies, and activity |
+| `vendor_scout_get_mission` | Read persisted mission, supplier evidence, RFQs, replies, structured offers, negotiation state, quotes, approvals, and activity |
 | `vendor_scout_discover_suppliers` | Run Vendor Scout's configured discovery provider/fallback |
 | `vendor_scout_record_supplier_candidates` | Persist provenance-backed live supplier research |
 | `vendor_scout_qualify_suppliers` | Persist explainable qualification decisions |
 | `vendor_scout_prepare_rfqs` | Persist non-binding RFQ conversations for qualified suppliers |
-| `vendor_scout_send_rfqs` | Deliver only unsent RFQs through the configured idempotent transport, or controlled preview when explicitly available |
-| `vendor_scout_record_supplier_reply` | Persist a supplier response with source provenance |
+| `vendor_scout_send_rfqs` | Deliver only unsent RFQs through the idempotent transport or controlled preview |
+| `vendor_scout_record_supplier_reply` | Persist one supplier response with provenance |
+| `vendor_scout_record_offer_terms` | Persist explicit structured terms anchored to that recorded reply |
+| `vendor_scout_prepare_counter` | Evaluate the latest offer and create one evidence-backed non-binding counter/request when needed |
+| `vendor_scout_send_counter` | Deliver the prepared counter through the same retry-safe transport |
 
-None of these tools can purchase, accept terms, or place an order.
+There is deliberately no acceptance, purchasing, sample-order, or other commitment tool.
 
-## 4. Configure the saved TrueForge agent
+## 5. Configure the saved TrueForge agent
 
 Create/save an agent named:
 
@@ -110,9 +109,7 @@ Create/save an agent named:
 vendor-scout
 ```
 
-Use the model appropriate for the hackathon environment and attach the configured `vendor-scout` MCP server.
-
-The current discovery, qualification, RFQ, and reply-recording tools are intended to run autonomously. Supplier outreach is non-binding and Vendor Scout itself constrains it to qualified suppliers with a retry-safe transport. The connector can therefore run the current tools without a purchasing approval gate:
+Attach the `vendor-scout` MCP server. A useful configuration is:
 
 ```json
 {
@@ -123,26 +120,18 @@ The current discovery, qualification, RFQ, and reply-recording tools are intende
     "vendor_scout_get_mission",
     "vendor_scout_record_supplier_candidates",
     "vendor_scout_qualify_suppliers",
-    "vendor_scout_prepare_rfqs"
+    "vendor_scout_prepare_rfqs",
+    "vendor_scout_record_offer_terms",
+    "vendor_scout_prepare_counter"
   ],
   "require_approval_for_tools": [],
   "preload": false
 }
 ```
 
-This remains safe only because the MCP surface exposes no purchase/acceptance tool. When a later phase introduces `order_sample`, `accept_terms`, or another commitment tool, that tool must require human approval in TrueForge **and** remain server-side gated by Vendor Scout. Approval must not rely on prompt text alone.
+This is safe only because the current tool surface exposes no consequential commitment action. When a later phase introduces `order_sample`, `accept_terms`, or similar, that tool must require human approval in TrueForge **and** remain server-side gated by Vendor Scout. Approval must not depend on prompt text alone.
 
-Useful TrueForge runtime features for later phases:
-
-- sandbox enabled for quote normalization / landed-cost analysis
-- dynamic subagents for supplier research where they materially improve quality
-- context compaction for long sourcing conversations
-- external live research tools for supplier discovery
-- external inbox/webhook ingestion that can call `vendor_scout_record_supplier_reply` with message provenance
-
-## 5. Point Vendor Scout at TrueForge
-
-Set:
+## 6. Point Vendor Scout at TrueForge
 
 ```bash
 export TRUEFORGE_BASE_URL='http://localhost:8790'
@@ -150,9 +139,7 @@ export TRUEFORGE_AGENT_NAME='vendor-scout'
 export TRUEFORGE_TOKEN=''
 ```
 
-Use `TRUEFORGE_TOKEN` only when the TrueForge runtime requires bearer/OIDC authentication.
-
-Vendor Scout then supports these mission actions:
+Vendor Scout supports:
 
 ```text
 connect_trueforge
@@ -160,63 +147,90 @@ start_trueforge_turn
 sync_trueforge_turn
 ```
 
-`connect_trueforge` creates one TrueForge session and persists its `sessionId` on the sourcing mission. Later turns reuse that session instead of creating disconnected AI requests.
+`connect_trueforge` creates one persistent TrueForge session and stores its `sessionId` on the sourcing mission.
 
-`start_trueforge_turn` starts a non-streaming TrueForge turn and stores its turn ID immediately. The HTTP request does not wait for a long-running agent loop to finish.
+`start_trueforge_turn` starts a non-streaming turn and stores its turn ID immediately instead of holding a Vendor Scout request open for the whole agent loop.
 
-`sync_trueforge_turn` retrieves the latest turn state and stores bounded output plus any required actions.
+`sync_trueforge_turn` retrieves current turn state and stores bounded output plus required actions.
 
-## 6. Preferred live sourcing flow
+## 7. Preferred live sourcing + negotiation loop
 
-With live research and supplier-contact integrations available:
-
-```text
-1. vendor_scout_get_mission
-2. research real supplier sources
-3. vendor_scout_record_supplier_candidates
-4. vendor_scout_qualify_suppliers
-5. vendor_scout_prepare_rfqs
-6. vendor_scout_send_rfqs
-7. ingest supplier response with source provenance
-8. vendor_scout_record_supplier_reply
-9. continue into negotiation / quote comparison
-```
-
-The record-candidate tool requires a `sourceReference` for every supplier. If a source confirms the supplier but does not expose price, MOQ, or lead time, send those fields as `null` or omit the optional field. Vendor Scout preserves that uncertainty and marks the candidate `Needs review`; it does not fabricate a zero or favorable value.
-
-The supplier-reply tool also requires `sourceReference`, such as an email message ID/URI or webhook reference. Replaying the same provider message is idempotent.
-
-If the TrueForge agent has no independent research tool, it can call:
+With live research and supplier communication available:
 
 ```text
-vendor_scout_discover_suppliers
+1.  vendor_scout_get_mission
+2.  research real supplier sources
+3.  vendor_scout_record_supplier_candidates
+4.  vendor_scout_qualify_suppliers
+5.  vendor_scout_prepare_rfqs
+6.  vendor_scout_send_rfqs
+7.  ingest supplier response with source provenance
+8.  vendor_scout_record_supplier_reply
+9.  vendor_scout_record_offer_terms
+10. vendor_scout_prepare_counter
+11. vendor_scout_send_counter when a counter exists
+12. ingest revised supplier response
+13. repeat steps 8–11
+14. stop countering when `ready_for_comparison`
 ```
 
-That delegates discovery to `VENDOR_SCOUT_DISCOVERY_URL` when configured, otherwise to the explicitly labeled controlled fallback only when fallback is enabled.
+If Vendor Scout returns `reject_recommended` / `human_review` because the supplier explicitly failed a critical technical confirmation, stop autonomous negotiation and surface the issue.
 
-## 7. Outreach safety and truth boundary
+If Vendor Scout returns `ready_for_comparison`, stop countering that supplier. This means the persisted offer has no unresolved Phase 7 negotiation gap; it does **not** accept commercial terms.
 
-Supplier contact is autonomous but not ambiguous:
+## 8. Evidence discipline
 
-- RFQs are explicitly non-binding and contain no purchase commitment or acceptance of terms.
-- only qualified suppliers receive RFQ conversations.
-- every outbound RFQ has a stable idempotency key.
-- provider acceptance is persisted before the supplier is counted as contacted.
-- an already accepted RFQ is never resent on retry.
-- if one supplier reply moves the mission into negotiation while another delivery failed, the failed supplier remains retryable.
-- `.example` fixture contacts are blocked from a real outbound provider.
-- controlled preview persists the same RFQ state but sends no external message and does not increment contact metrics.
+### Supplier research
 
-## 8. Human approval boundary
+Every recorded supplier requires a `sourceReference`. Unknown price, MOQ, or lead time stays `null` and remains unverified.
 
-The agent prompt explicitly forbids spending or accepting terms without approval, but the architectural control is stronger than that:
+### Supplier replies
 
-- current MCP surface does not expose a purchase/commitment tool
-- Vendor Scout mission transitions contain an explicit `awaiting_approval` stage
-- production mutation APIs require authentication
-- later consequential tools must require TrueForge approval and Vendor Scout server validation
+Every reply requires `sourceReference`, such as an email message ID/URI or webhook reference. Replaying the same provider message is idempotent.
 
-The final intended pattern is:
+### Structured offer terms
+
+`vendor_scout_record_offer_terms` must reference a reply that already exists in Vendor Scout. TrueForge should record only terms the supplier explicitly stated:
+
+- price/currency
+- quantity tiers
+- MOQ
+- availability
+- lead time
+- shipping terms/cost
+- sample availability/price
+- certifications
+- technical confirmation
+
+Missing/uncertain terms stay null. Do not infer favorable commercial facts from prose or general supplier knowledge.
+
+### Counters
+
+`vendor_scout_prepare_counter` uses persisted mission constraints and persisted same-currency competitor offers. The generated message only asks for explicit improvements/missing evidence and does not disclose competitor identities.
+
+See `docs/NEGOTIATION.md` for the full Phase 7 contract.
+
+## 9. Outreach and negotiation safety
+
+- RFQs and counters are explicitly non-binding.
+- every outbound message has a stable idempotency key
+- accepted messages are never resent
+- provider acceptance is persisted
+- failed delivery remains retryable
+- `.example` fixture contacts cannot reach a live provider
+- controlled preview persists the exact message but sends nothing external
+- supplier contact/offer/counter state remains inspectable in the Conversations UI
+- explicit technical incompatibility stops automated countering
+- a strong offer becomes `ready_for_comparison`, not “accepted”
+
+## 10. Human approval boundary
+
+The architecture—not just the prompt—preserves the commitment boundary:
+
+- current MCP surface has no purchase/acceptance tool
+- mission lifecycle contains explicit `awaiting_approval`
+- production mutations require authentication
+- later consequential tools must require both TrueForge approval and Vendor Scout server validation
 
 ```text
 research / outreach / negotiate / compare
@@ -231,33 +245,35 @@ research / outreach / negotiate / compare
   approved action only
 ```
 
-## 9. Production notes
+## 11. Production notes
 
-For a public deployment:
+For public deployment:
 
 - use HTTPS for remote TrueForge, discovery, and outreach providers
-- protect TrueForge itself with its supported OIDC/auth configuration
+- protect TrueForge with its supported auth/OIDC configuration
 - configure strong Vendor Scout bearer tokens
 - keep `VENDOR_SCOUT_ENABLE_DEV_RESET=0`
-- keep `VENDOR_SCOUT_ALLOW_FIXTURE_FALLBACK=0` unless the demo explicitly requires it
-- keep `VENDOR_SCOUT_ALLOW_OUTREACH_PREVIEW=0` unless a production preview mode is deliberately desired
-- replace the current local JSON store with durable concurrent persistence before multi-instance production use
+- keep `VENDOR_SCOUT_ALLOW_FIXTURE_FALLBACK=0` unless explicitly needed for a demo
+- keep `VENDOR_SCOUT_ALLOW_OUTREACH_PREVIEW=0` unless deliberately desired
+- replace local JSON with durable concurrent persistence before multi-instance production use
 
 ## Verification
 
-Repository tests include:
+The exact Phase 7 checkpoint passes 48/48 Node tests and dedicated browser validation. Tests cover:
 
-- TrueForge session wire-contract tests
-- TrueForge session/turn persistence through the Vendor Scout HTTP API
-- MCP initialize/list/call flow and seven-tool annotations
-- provenance-backed live supplier ingestion
-- production MCP default-deny behavior
-- persisted Mission → Discover → Qualify execution
-- complete non-binding RFQ construction
-- idempotent real-provider delivery and duplicate-send prevention
-- partial-failure retry after negotiation begins
-- provenance-required supplier reply persistence
-- controlled preview that does not claim real supplier contact
-- desktop/mobile Chromium rendering, including a deep-linked Conversations workflow
+- persistent TrueForge session/turn behavior
+- ten-tool MCP contract and absence of commitment tools
+- sourcing/discovery/qualification/outreach
+- RFQ idempotency and partial-failure retries
+- supplier-reply provenance
+- structured-offer provenance
+- price/MOQ/lead-time gap evaluation
+- same-currency competitor benchmark
+- stable counter messages/idempotency
+- multi-round real-provider negotiation
+- duplicate counter-send prevention
+- ready-for-comparison stop behavior
+- human-review stop on technical conflict
+- desktop/mobile rendering of persisted offer, exact gaps, counter round, and preview truth state
 
-A final live TrueForge validation still requires an actual configured TrueForge runtime, saved `vendor-scout` agent, connector credentials, and real external supplier integrations. The repository intentionally does not fake that external evidence.
+A final real-world validation still requires an actual configured TrueForge runtime, live supplier research, live contact transport, and real supplier responses. The repository does not fake that external evidence.
