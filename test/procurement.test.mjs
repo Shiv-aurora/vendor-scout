@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { createSeed } from "../lib/seed.mjs";
 import { CURRENT_CONTRACT_VERSION } from "../lib/migrations.mjs";
 
-test("default demo seed is internally consistent and ready for outreach", () => {
-  const state = createSeed();
+test("explicit contacting seed is internally consistent and ready for outreach", () => {
+  const state = createSeed({ missionStage: "contacting" });
   assert.equal(state.meta.contractVersion, CURRENT_CONTRACT_VERSION);
   assert.equal(state.organization.name, "Atlas Robotics");
   assert.equal(state.missions.length, 1);
@@ -23,7 +23,7 @@ test("draft replay seed contains the mission but no precomputed supplier work", 
 });
 
 test("supplier candidates preserve qualification evidence and provenance", () => {
-  const state = createSeed();
+  const state = createSeed({ missionStage: "contacting" });
   assert.ok(state.supplierCandidates.some(candidate => candidate.status === "qualified"));
   assert.ok(state.supplierCandidates.some(candidate => candidate.status === "rejected"));
   assert.ok(state.supplierCandidates.some(candidate => candidate.status === "needs_review"));
@@ -36,7 +36,7 @@ test("supplier candidates preserve qualification evidence and provenance", () =>
 });
 
 test("foundation does not fake outreach, quotes, approvals, or sample orders", () => {
-  const state = createSeed();
+  const state = createSeed({ missionStage: "contacting" });
   assert.deepEqual(state.conversations, []);
   assert.deepEqual(state.quotes, []);
   assert.deepEqual(state.approvals, []);

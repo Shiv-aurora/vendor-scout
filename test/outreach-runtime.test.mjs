@@ -256,6 +256,8 @@ test("controlled preview creates conversation evidence but does not claim real o
   });
   t.after(() => stop(runtime.child));
 
+  const reset = await postJson(`${runtime.baseUrl}/api/dev/reset`, { stage: "contacting" });
+  assert.equal(reset.status, 200);
   let snapshot = await mcp(runtime.baseUrl, 10, "vendor_scout_prepare_rfqs", { missionId: "mission-lidar-500" });
   assert.equal(snapshot.mission.status, "contacting");
   assert.ok(snapshot.conversations.length >= 2);
