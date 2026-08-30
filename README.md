@@ -2,12 +2,12 @@
 
 > **Find better suppliers. Negotiate automatically. Approve the best deal.**
 
-Vendor Scout is an autonomous procurement agent for hardware teams, built for the TrueForge Hackathon by WeMakeDevs.
+Vendor Scout is an autonomous hardware-procurement agent built for the TrueForge Hackathon by WeMakeDevs.
 
-Give it one sourcing mission. It finds alternatives, qualifies them, starts RFQs, continues supplier conversations, negotiates against your constraints, normalizes the resulting offers, recommends the strongest deal, and stops before a consequential commitment.
+Give it one sourcing mission. It finds alternatives, qualifies them, starts RFQs, continues supplier conversations, negotiates against your constraints, normalizes the resulting offers, recommends the strongest deal, and stops before consequential commitment.
 
 ```text
-Mission → Discover → Qualify → Contact → Negotiate → Compare → Human Approval → Approved Action
+Mission → Discover → Qualify → Contact → Negotiate → Compare → Human Approval → TrueForge Approval → Approved Action
 ```
 
 The primary demo follows one concrete story: **Atlas Robotics needs 500 production LiDAR modules with better economics and a lead time under 21 days.**
@@ -16,33 +16,31 @@ The primary demo follows one concrete story: **Atlas Robotics needs 500 producti
 
 Hardware procurement is reactive. Teams often wait until a supplier becomes expensive, slow, unavailable, or risky before searching for alternatives, then spend days finding vendors, requesting quotes, chasing missing terms, negotiating, and comparing inconsistent offers.
 
-Vendor Scout turns that work into an ongoing agent mission while keeping the consequential decision with a human.
+Vendor Scout turns that work into an ongoing agent mission while keeping consequential decisions with a human.
 
 ## Three demo moments
 
 ### 1. The agent does procurement work, not chat
 
-Vendor Scout carries one persistent sourcing mission through discovery, qualification, RFQ creation, supplier replies, structured offer extraction, and multi-round negotiation. Every supplier fact and supplier message retains provenance; missing commercial data stays unknown instead of becoming a convenient zero.
+Vendor Scout carries one persistent sourcing mission through discovery, qualification, RFQ creation, supplier replies, structured offer extraction, and multi-round negotiation. Supplier facts and messages retain provenance; missing commercial data stays unknown rather than becoming a convenient zero.
 
 ### 2. It negotiates, then verifies the economics
 
-The agent counters explicit gaps in price, MOQ, lead time, technical confirmation, and missing information. Once offers are ready, TrueForge is instructed to use sandbox execution to independently check the quote math before Vendor Scout persists its deterministic comparison across quantity tiers, MOQ overbuy, FX, shipping, landed cost, lead time, supplier quality, samples, and evidence completeness.
+The agent counters explicit gaps in price, MOQ, lead time, technical confirmation, and missing information. Once offers are ready, TrueForge uses sandbox execution to independently check the quote math before Vendor Scout persists its deterministic comparison across quantity tiers, MOQ overbuy, provenance-backed FX, shipping, landed cost, lead time, supplier quality, samples, and evidence completeness.
 
-Incomplete landed-cost offers stay visible, but cannot beat a complete landed-cost offer merely because an unknown shipping cost makes them look artificially cheap.
+Incomplete landed-cost offers remain visible, but cannot beat a complete landed-cost offer merely because an unknown shipping cost makes them look artificially cheap.
 
 ### 3. It cannot silently spend money
 
-A successful comparison creates a real decision packet and moves the mission to `awaiting_approval`.
+A successful comparison creates a decision packet and moves the mission to `awaiting_approval`.
 
-The human sees the recommendation, competing offers, current-vs-negotiated economics, landed cost, savings, lead time, MOQ, shipping, supplier risk, sample terms, reasons, risks, and source evidence.
-
-The human chooses:
+The human sees the recommendation, competing offers, current-vs-negotiated economics, landed cost, savings, lead time, MOQ, shipping, supplier risk, sample terms, reasons, risks, and evidence, then chooses:
 
 - **Approve sample**
 - **Keep negotiating**
 - **Reject**
 
-Even **Approve sample** does not execute the purchase. It only records the business decision. On a later TrueForge turn, the agent may request `vendor_scout_execute_sample_order`; that MCP tool is marked destructive and configured for TrueForge tool approval, so the harness pauses again immediately before execution. Vendor Scout then independently verifies the persisted approval and sample budget before submitting the approved action.
+Even **Approve sample** does not execute the purchase. It records the business decision. On a later TrueForge turn, the agent may request `vendor_scout_execute_sample_order`; that MCP tool is destructive and configured for TrueForge tool approval, so the harness pauses again immediately before execution. Vendor Scout then independently verifies the persisted approval, approved spend snapshot, and sample budget.
 
 ## Architecture
 
@@ -51,9 +49,8 @@ Even **Approve sample** does not execute the purchase. It only records the busin
                                    │      TrueForge session       │
                                    │                              │
                                    │  model / tool loop           │
-                                   │  web + supplier research     │
+                                   │  MCP orchestration           │
                                    │  sandbox computation         │
-                                   │  optional subagents          │
                                    │  destructive-tool approval   │
                                    └──────────────┬───────────────┘
                                                   │ MCP
@@ -66,25 +63,24 @@ Even **Approve sample** does not execute the purchase. It only records the busin
 │ Suppliers             │              │ RFQ + conversations           │
 │ Conversations         │              │ negotiation state             │
 │ Approvals             │              │ quote normalization/ranking   │
-└───────────────────────┘              │ business approval records     │
+└───────────────────────┘              │ approval records              │
                                        │ approved sample action        │
                                        └───────┬───────────┬───────────┘
                                                │           │
                                       outreach adapter   order adapter
 ```
 
-Vendor Scout and TrueForge have intentionally different responsibilities:
+**TrueForge** is the persistent autonomous-agent runtime: model/tool loop, MCP orchestration, sandbox computation, and tool approval.
 
-- **TrueForge** is the persistent autonomous-agent runtime: model loop, MCP orchestration, research tools, sandbox computation, optional subagents, and tool approval.
-- **Vendor Scout** is the procurement control plane: durable mission/evidence state, deterministic business rules, idempotency, provenance, comparison math, approval records, and server-side commitment enforcement.
+**Vendor Scout** is the procurement control plane: durable mission/evidence state, deterministic business rules, idempotency, provenance, comparison math, approval records, and server-side commitment enforcement.
 
-The same persisted mission is used by the UI, HTTP API, and MCP tools; the demo does not maintain a separate fake “AI state.”
+The UI, HTTP API, and MCP tools operate on the same persisted mission; there is no separate fake “AI state” for the demo.
 
 ## TrueForge usage
 
 Vendor Scout uses one persistent TrueForge sourcing session rather than disconnected prompt calls.
 
-The current MCP surface exposes **12 tools**:
+The MCP surface exposes **12 tools**:
 
 1. `vendor_scout_get_mission`
 2. `vendor_scout_discover_suppliers`
@@ -99,7 +95,7 @@ The current MCP surface exposes **12 tools**:
 11. `vendor_scout_analyze_quotes`
 12. `vendor_scout_execute_sample_order` — **destructive / approval-gated**
 
-The saved TrueForge agent should enable sandbox execution and explicitly gate the final tool:
+The saved TrueForge agent enables sandbox execution and gates the final tool:
 
 ```json
 {
@@ -116,9 +112,9 @@ The saved TrueForge agent should enable sandbox execution and explicitly gate th
 }
 ```
 
-See [`docs/TRUEFORGE.md`](docs/TRUEFORGE.md) for the complete live-runtime setup and approval flow.
+See [`docs/TRUEFORGE.md`](docs/TRUEFORGE.md) for the live-runtime setup and approval flow.
 
-The live path was verified on 2026-08-30 with TrueForge `0.1.4`, a local Ollama tool-calling model, authenticated Vendor Scout MCP, real sandbox arithmetic, a persisted business approval, a real destructive-tool approval pause, denial without execution, and a separately allowed controlled sample action. The final action remained explicitly simulated with no external spend; exact evidence IDs are in [`docs/STATUS.md`](docs/STATUS.md).
+The live path was verified on August 30, 2026 with TrueForge `0.1.4`, local Ollama `gemma4:e4b`, authenticated Vendor Scout MCP, real sandbox arithmetic, a persisted business approval, a real destructive-tool approval pause, denial without execution, and a separately allowed controlled sample action. The final action remained explicitly simulated with no external spend. Exact session/turn/tool-call evidence is in [`docs/STATUS.md`](docs/STATUS.md).
 
 ## Procurement safety model
 
@@ -128,53 +124,51 @@ Vendor Scout does not rely on prompt text as its only guardrail.
 
 - supplier research requires `sourceReference`
 - contact information preserves its source
-- supplier replies require provenance and deduplicate provider message IDs
+- MCP candidate data is runtime-validated against the published contract before persistence
+- supplier replies require provenance and are replay-safe after normalization
 - structured offer terms must reference an already-persisted inbound message
 - unknown price / MOQ / lead time / shipping / FX remains unknown
-- cross-currency analysis requires a positive FX rate with source provenance
+- cross-currency ranking requires a positive provenance-backed FX rate
 
 ### Outreach boundaries
 
 - RFQs and counters are non-binding
-- every outbound message has a stable idempotency key
-- accepted messages are never resent
-- failed delivery remains retryable
-- `.example` fixture contacts are blocked from live delivery
+- outbound messages use stable idempotency keys
+- only explicit provider acceptance states count as real delivery
+- accepted messages are never resent; failed delivery remains retryable
+- `.example` and trailing-dot `.example.` fixture contacts cannot reach the live provider
+- provider responses are byte-bounded while streaming and oversized declared bodies are cancelled
 - controlled preview sends no external message and never counts as real supplier contact
 
 ### Commitment boundaries
 
 - quote analysis cannot accept terms or spend money
-- comparison creates a pending Approval packet
+- comparison creates a pending approval packet
 - business approval does not execute the action
-- non-orderable sample recommendations cannot be approved into a dead-end state
+- non-orderable recommendations cannot be approved into a dead-end state
 - sample execution requires a matching persisted human approval
-- sample price and currency must still match the human-approved spend snapshot
-- the sample-order MCP tool is explicitly destructive for the TrueForge harness gate
-- sample cost must remain within the mission budget
-- sample execution is idempotent across retries
+- sample price/currency must still match the human-approved spend snapshot
+- the sample-order MCP tool is destructive for the TrueForge harness gate
+- sample cost must remain within mission budget
+- execution is idempotent across retries
 
-## The decision packet
+## Decision packet
 
-The Approvals screen is the climax of the product, not a decorative confirmation modal.
-
-It shows:
+The Approvals screen is the climax of the product, not a decorative confirmation modal. It shows:
 
 - recommended supplier and decision score
 - current vs negotiated unit price
-- complete landed cost, or explicit incomplete-cost state
+- complete landed cost or explicit incomplete-cost state
 - projected savings
 - current vs proposed lead time
-- MOQ
-- shipping terms/cost
+- MOQ and shipping
 - supplier qualification/risk
 - sample availability and cost
-- all supplier offers, including incomplete/unrankable evidence
+- all competing offers, including incomplete/unrankable evidence
 - transparent scoring components
-- recommendation reasons and risks
-- source references
+- recommendation reasons, risks, and source references
 
-After approval, the screen explicitly distinguishes:
+After approval the UI explicitly distinguishes:
 
 1. **business approval recorded, execution still gated**
 2. **TrueForge destructive-tool approval**
@@ -191,11 +185,7 @@ npm install
 npm run dev
 ```
 
-Open:
-
-```text
-http://localhost:3000
-```
+Open `http://localhost:3000`.
 
 ### Jump directly to the decision climax
 
@@ -207,11 +197,7 @@ npm run demo:decision
 
 This deterministic demo builder resets the mission, creates two controlled supplier conversation/offer records, runs the real quote engine, and leaves the mission at `awaiting_approval`.
 
-Then open:
-
-```text
-http://localhost:3000/#app/approvals
-```
+Open `http://localhost:3000/#app/approvals`.
 
 The demo builder is intentionally honest: its supplier messages are labeled controlled evidence and it does not claim any real supplier was contacted.
 
@@ -223,11 +209,11 @@ Start TrueForge separately:
 npx @truefoundry/trueforge
 ```
 
-Then follow [`docs/TRUEFORGE.md`](docs/TRUEFORGE.md) to attach the Vendor Scout Streamable HTTP MCP endpoint at `/mcp`, enable the sandbox, and configure the destructive sample-order approval gate.
+Then follow [`docs/TRUEFORGE.md`](docs/TRUEFORGE.md) to attach `/mcp`, enable sandbox execution, and configure the destructive sample-order approval gate.
 
 ## Runtime configuration
 
-See [`.env.example`](.env.example). Important variables include:
+See [`.env.example`](.env.example).
 
 | Variable | Purpose |
 | --- | --- |
@@ -251,103 +237,85 @@ Production defaults deny fixture fallbacks/previews and require configured beare
 npm run check
 ```
 
-The current reviewed code checkpoint passes **73/73 tests** plus the dedicated decision, outreach, and negotiation browser workflows.
+The current integrated review checkpoint passes **86/86 tests** plus the dedicated decision, outreach, and negotiation browser workflows.
 
-Validation covers:
+The verified surface includes:
 
-- sourcing mission lifecycle
-- discovery and provenance
-- qualification decisions
-- migrations / persistence
-- production default-deny behavior
-- persistent TrueForge session/turn adapter
-- MCP schemas and annotations
-- RFQ delivery and retry/idempotency
-- supplier reply provenance
-- structured offer extraction
-- multi-round negotiation
-- stale-offer revalidation
-- FX provenance
-- quantity-tier and MOQ normalization, including MOQ-crossed pricing tiers
-- MOQ-aware pre-shipping savings
-- landed cost and conservative incomplete-cost handling
-- transparent quote scoring/ranking
-- approval packet creation and fresh approval cycles after `Keep negotiating`
-- denial of non-orderable approval packets
-- Approve / Keep negotiating / Reject paths
-- denial of sample execution before business approval
+- mission lifecycle, persistence, migration, and production default-deny behavior
+- discovery provenance and atomic researched-supplier ingestion
+- MCP protocol/request safety and runtime candidate-schema enforcement
+- persistent TrueForge session/turn handling and bounded provider responses
+- RFQ delivery, provider truth semantics, retry/idempotency, and fixture-address protection
+- supplier reply provenance/timestamp normalization/replay safety
+- evidence-anchored structured offer extraction
+- multi-round negotiation, stale-counter invalidation, and quantity-tier-aware pricing
+- provenance-backed FX handoff for foreign-currency offers
+- quote quantity tiers, MOQ overbuy, landed cost, incomplete-cost handling, scoring/ranking
+- approval packets, fresh approval cycles, and non-orderable approval denial
 - approved sample price/currency drift protection
-- streaming sample-provider response bounds
-- sample budget checks
-- sample execution idempotency
-- real-vs-controlled order truth
-- desktop/mobile browser workflows for sourcing, conversations, negotiation, comparison, approval, and completed controlled action
+- sample budget checks, idempotency, response bounds, and real-vs-controlled truth
+- desktop/mobile workflows through sourcing, negotiation, comparison, approval, and controlled completion
 
-`docs/STATUS.md` records the exact latest validated checkpoint and any external validation still outstanding.
+Latest exact-head CI evidence is recorded in [`docs/STATUS.md`](docs/STATUS.md).
 
 ## Demo reliability and truthfulness
 
-The demo is narrow on purpose: one LiDAR sourcing mission, end to end.
+The demo is deliberately narrow: one LiDAR sourcing mission, end to end.
 
-External services are allowed to fail without destroying the presentation, but controlled fallbacks are never disguised as real evidence:
+External services may fail without destroying the presentation, but controlled fallbacks are never disguised as real evidence:
 
 - controlled supplier discovery is labeled fixture evidence
 - controlled RFQ/counter preview sends no email
-- controlled supplier responses are labeled controlled demo messages
+- controlled supplier responses are labeled demo messages
 - controlled sample action records no external spend
-- a real provider path uses the same persisted workflow with explicit provider IDs
-
-This lets the demo remain dependable without turning the product into a sequence of fake AI screenshots.
+- real provider paths use the same persisted workflow with explicit provider IDs
 
 ## Hackathon scope / reused shell
 
-Vendor Scout was built during the hackathon on top of the repository's existing lightweight hardware-dashboard/product shell. That shell supplied useful styling and hardware context; the procurement mission model, agent/MCP boundary, discovery/qualification execution, outreach, conversations, negotiation, quote engine, decision system, approval enforcement, sample-action path, tests, and hackathon-specific product framing are the hackathon implementation.
+Vendor Scout was built during the hackathon on top of the repository's existing lightweight hardware-dashboard/product shell. That shell supplied styling and hardware context; the procurement mission model, agent/MCP boundary, discovery/qualification execution, outreach, conversations, negotiation, quote engine, decision system, approval enforcement, sample-action path, tests, and hackathon-specific product framing are hackathon implementation.
 
 The Git history in this repository begins during the hackathon window.
 
 ## AI-assisted development disclosure
 
-Development used OpenAI/ChatGPT-assisted engineering for implementation, debugging, review, and documentation. All generated changes were inspected against repository state and validated through the project's automated/runtime/browser checks before being treated as complete.
+Development used OpenAI/ChatGPT-assisted engineering and Codex for implementation, debugging, integration validation, review remediation, and documentation. Generated changes were inspected against repository state and validated through automated/runtime/browser checks before being treated as complete.
 
 ## Qodo Code Review Evidence
 
-Representative PR: [#5 — Complete quote comparison, human approval, and approved sample action](https://github.com/Shiv-aurora/vendor-scout/pull/5)
+Representative reviewed PR: [#5 — Complete Vendor Scout: TrueForge procurement agent, approval, and sample action](https://github.com/Shiv-aurora/vendor-scout/pull/5)
 
-Qodo submitted a real review on August 30, 2026 and identified **six material findings**: five high-severity correctness/security findings and one medium reliability finding.
+PR #5 is the cumulative `main`-based integration PR. Qodo reviewed it repeatedly during remediation rather than being used as a ceremonial final check.
 
-The findings were:
+The first PR #5 review identified **six material quote/approval/order findings**. All six were fixed and regression-tested, including MOQ-tier accounting, MOQ-aware savings, non-orderable approvals, bounded sample-provider responses, sample-price reapproval protection, and fresh approval cycles after `Keep negotiating`.
 
-1. MOQ-constrained orders selected a quantity tier using the requested quantity rather than the actual purchased quantity.
-2. Pre-shipping savings could ignore mandatory MOQ overbuy.
-3. A recommendation with no orderable in-budget sample could be approved into a dead-end `approved` state.
-4. The sample-order provider response limit buffered the full response before enforcing its byte cap.
-5. Changed sample price/availability could bypass fresh human approval semantics.
-6. A `returned_to_negotiation` approval could block creation of a later pending approval cycle.
+Before consolidation, Qodo findings from stacked PRs #2–#4 were also audited and carried forward. Valid issues were fixed in MCP state atomicity/protocol safety, TrueForge response bounds, outreach delivery truth/replay behavior, and negotiation readiness/counter correctness.
 
-All six were fixed; none were dismissed.
+After PR #5 was retargeted to `main`, Qodo reviewed the complete cumulative diff and found **four additional integrated issues**:
 
-Remediation included MOQ-aware tier/savings accounting, non-executable approval enforcement, incremental provider-response bounds, immutable human-approved sample spend checks, and distinct approval decision cycles. Regression tests were added for each failure mode.
+1. negotiation could prefer standalone price over an applicable quantity tier;
+2. MCP candidate runtime validation did not fully enforce its published field constraints;
+3. source-reference whitespace could defeat supplier-reply replay deduplication;
+4. the declared-oversize response path did not cancel unread TrueForge/outreach bodies.
 
-Clean reviewed code head: `e191c917f347c99e4bfd7612eca822191d38f578`.
+All four were fixed on `27e18af2a32d42164c8c6639e9af2453abe89969`, with focused regression coverage. The guarded remediation passed **86/86 tests** before it was allowed to commit.
 
-Validation on that head:
+Qodo's live review summary has re-evaluated the current cumulative branch and reports:
 
-- `Vendor Scout CI` run `33294895719`: **73/73 tests passed**
-- Decision Browser run `33294895726`: **success**
-- Outreach Browser run `33294895718`: **success**
-- Negotiation Browser run `33294895778`: **success**
+- **Bugs (0)**
+- **Rule violations (0)**
+- all ten PR #5 review threads **Resolved**
 
-Qodo's live review summary has re-evaluated the remediation and now reports **`Bugs (0)`**, **`Rule violations (0)`**, and marks all six original findings **Resolved**:
+Review summary / evidence:
 
 <https://github.com/Shiv-aurora/vendor-scout/pull/5#issuecomment-5466842962>
 
-Each Qodo thread also contains a specific response linking the fix and regression evidence. A follow-up `/agentic_review` was requested after remediation:
+Final cumulative follow-up request:
 
-<https://github.com/Shiv-aurora/vendor-scout/pull/5#issuecomment-5466942032>
+<https://github.com/Shiv-aurora/vendor-scout/pull/5#issuecomment-5467303812>
 
-At the time this evidence was recorded, GitHub still showed the original submitted Qodo review object rather than a second submitted review object. This README therefore does **not** invent a second review; it records the actual submitted review, Qodo's resolved live re-evaluation state, and the explicit follow-up request.
+Each material thread contains a specific remediation response and test evidence. See [`docs/QODO_REVIEW.md`](docs/QODO_REVIEW.md) for the finding-by-finding review history.
 
-See [`docs/QODO_REVIEW.md`](docs/QODO_REVIEW.md) for the finding-by-finding remediation record.
+Historical note: PR #1 was merged before Qodo review evidence existed. That historical fact is not represented as reviewed work.
 
 ## Project documentation
 
@@ -358,8 +326,9 @@ See [`docs/QODO_REVIEW.md`](docs/QODO_REVIEW.md) for the finding-by-finding reme
 - [`docs/OUTREACH.md`](docs/OUTREACH.md) — RFQ transport contract
 - [`docs/NEGOTIATION.md`](docs/NEGOTIATION.md) — structured offer + negotiation loop
 - [`docs/QUOTES.md`](docs/QUOTES.md) — quote normalization/ranking contract
-- [`docs/QODO_REVIEW.md`](docs/QODO_REVIEW.md) — Qodo review/remediation evidence
+- [`docs/QODO_REVIEW.md`](docs/QODO_REVIEW.md) — review/remediation evidence
+- [`docs/DEMO.md`](docs/DEMO.md) — three-minute judge runbook
 
 ## Production boundary
 
-The hackathon build uses a single-process atomic JSON store. It is restart-persistent and deliberately fail-closed on unknown state versions, but it is not a multi-instance transactional database. A broader production deployment should replace it with durable concurrent storage without changing the procurement-domain contract.
+The hackathon build uses a single-process atomic JSON store. It is restart-persistent and fail-closed on unknown state versions, but it is not a multi-instance transactional database. A broader production deployment should replace it with durable concurrent storage without changing the procurement-domain contract.
