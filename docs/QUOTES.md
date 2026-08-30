@@ -110,6 +110,12 @@ Every quote stores both component scores and weights. There is no hidden LLM ran
 
 Economics is based on normalized known cost relative to the best eligible known cost. Lead-time score uses the mission ceiling. Supplier-quality score derives from persisted supplier confidence and technical match. MOQ and sample scores use mission constraints. Completeness penalizes missing evidence.
 
+## Conservative comparability rule
+
+When at least one eligible offer has a complete landed cost, only complete-landed-cost offers receive a final rank. Offers with unknown shipping remain visible with `comparison.basis = incomplete-landed-cost`, but cannot win by appearing artificially cheaper.
+
+If every otherwise-eligible offer lacks landed-cost inputs, Vendor Scout may produce a clearly `provisional` recommendation using known normalized cost. The missing fields remain attached as recommendation risks.
+
 ## Recommendation
 
 The top eligible quote produces one recommendation containing:

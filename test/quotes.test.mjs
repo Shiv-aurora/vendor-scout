@@ -157,7 +157,7 @@ test("analysis ranks complete offers with transparent score components and recom
   assert.ok(analysis.recommendation.reasons.length >= 2);
 });
 
-test("incomplete quote can be ranked provisionally but recommendation exposes uncertainty", () => {
+test("incomplete landed-cost quote stays visible but cannot outrank a complete offer", () => {
   const { mission, candidates } = fixture();
   const a = candidates[0];
   const b = candidates[1];
@@ -166,11 +166,40 @@ test("incomplete quote can be ranked provisionally but recommendation exposes un
   const complete = readyConversation({ mission, candidate: b, source: "complete", unitPrice: 370, shippingCost: 1000 });
   const analysis = analyzeQuotes(mission, [a, b], [incomplete, complete]);
   const incompleteQuote = analysis.quotes.find(quote => quote.supplierId === a.id);
-  assert.ok(incompleteQuote.score);
-  if (analysis.recommendation.supplierId === a.id) {
-    assert.equal(analysis.recommendation.status, "provisional");
-    assert.ok(analysis.recommendation.risks.some(risk => /shippingCost/.test(risk)));
-  }
+  const completeQuote = analysis.quotes.find(quote => quote.supplierId === b.id);
+  assert.equal(incompleteQuote.rank, null);
+  assert.equal(incompleteQuote.score, null);
+  assert.equal(incompleteQuote.comparison.rankable, false);
+  assert.equal(incompleteQuote.comparison.basis, "incomplete-landed-cost");
+  assert.equal(completeQuote.rank, 1);
+  assert.equal(completeQuote.comparison.basis, "complete-landed-cost");
+  assert.equal(analysis.recommendation.supplierId, b.id);
+  assert.equal(analysis.recommendation.status, "recommended");
+});
+
+test("analysis may make a provisional recommendation when every rankable offer lacks shipping cost", () => {
+  const { mission, candidates } = fixture();
+  const a = candidates[0];
+  const b = candidates[1];
+  const first = readyConversation({ mission, candidate: a, source: "provisional-a", unitPrice: 370, shippingCost: null });
+  const second = readyConversation({ mission, candidate: b, source: "provisional-b", unitPrice: 370, shippingCost: null });
+  const analysis = analyzeQuotes(mission, [a, b], [first, second]);
+  assert.ok(analysis.recommendation);
+  assert.equal(analysis.recommendation.status, "provisional");
+  assert.ok(analysis.recommendation.risks.some(risk => /shippingCost/.test(risk)));
+  assert.deepEqual(analysis.quotes.filter(quote => quote.rank).map(quote => quote.comparison.basis), ["known-cost-provisional", "known-cost-provisional"]);
+});
+
+test("recommendation identity is stable across re-analysis dates when evidence is unchanged", () => {
+  const { mission, candidates } = fixture();
+  const a = candidates[0];
+  const b = candidates[1];
+  const first = readyConversation({ mission, candidate: a, source: "stable-a", unitPrice: 382, shippingCost: 900 });
+  const second = readyConversation({ mission, candidate: b, source: "stable-b", unitPrice: 382, shippingCost: 1200 });
+  const dayOne = analyzeQuotes(mission, [a, b], [first, second], { now: "2026-08-29T14:00:00.000Z" });
+  const dayTwo = analyzeQuotes(mission, [a, b], [first, second], { now: "2026-08-30T14:00:00.000Z" });
+  assert.equal(dayOne.recommendation.id, dayTwo.recommendation.id);
+  assert.equal(dayOne.recommendation.quoteId, dayTwo.recommendation.quoteId);
 });
 
 test("analysis refuses to fabricate a recommendation when no quote has normalized price and technical evidence", () => {
