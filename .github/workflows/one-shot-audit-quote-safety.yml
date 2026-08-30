@@ -1,0 +1,64 @@
+name: One-shot conservative Phase 8 ranking
+
+on:
+  push:
+    branches: ["build/quote-comparison"]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tighten comparison safety and tests
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          quotes = Path('lib/quotes.mjs')
+          text = quotes.read_text()
+          old = '''function economicsScore(quote, minKnownTotal) {\n  if (!Number.isFinite(quote.knownTotal.base) || !Number.isFinite(minKnownTotal) || minKnownTotal <= 0) return 0;\n  return clamp(100 * minKnownTotal / quote.knownTotal.base);\n}\n\nfunction scoreQuote(quote, mission, minKnownTotal) {\n  const components = {\n    economics: round(economicsScore(quote, minKnownTotal), 1),\n'''
+          new = '''function comparisonCostBase(quote) {\n  if (quote.landedCost.complete && Number.isFinite(quote.landedCost.base)) return quote.landedCost.base;\n  return quote.knownTotal.base;\n}\n\nfunction economicsScore(quote, minComparisonTotal) {\n  const total = comparisonCostBase(quote);\n  if (!Number.isFinite(total) || !Number.isFinite(minComparisonTotal) || minComparisonTotal <= 0) return 0;\n  return clamp(100 * minComparisonTotal / total);\n}\n\nfunction scoreQuote(quote, mission, minComparisonTotal) {\n  const components = {\n    economics: round(economicsScore(quote, minComparisonTotal), 1),\n'''
+          if old not in text:
+              raise SystemExit('economics scoring anchor not found')
+          text = text.replace(old, new, 1)
+
+          old = '''  const minKnownTotal = Math.min(...eligible.map(quote => quote.knownTotal.base));\n  for (const quote of quotes) {\n    if (eligible.includes(quote)) quote.score = scoreQuote(quote, mission, minKnownTotal);\n  }\n  const ranked = eligible.sort((a, b) => b.score.total - a.score.total || (a.knownTotal.base - b.knownTotal.base));\n'''
+          new = '''  const completeLanded = eligible.filter(quote => quote.landedCost.complete && Number.isFinite(quote.landedCost.base));\n  const rankingPool = completeLanded.length ? completeLanded : eligible;\n  const comparisonBasis = completeLanded.length ? "complete-landed-cost" : "known-cost-provisional";\n  const minComparisonTotal = Math.min(...rankingPool.map(comparisonCostBase));\n  for (const quote of quotes) {\n    quote.comparison = {\n      eligible: eligible.includes(quote),\n      rankable: rankingPool.includes(quote),\n      basis: rankingPool.includes(quote) ? comparisonBasis : "incomplete-landed-cost"\n    };\n    if (rankingPool.includes(quote)) quote.score = scoreQuote(quote, mission, minComparisonTotal);\n  }\n  const ranked = rankingPool.sort((a, b) => b.score.total - a.score.total || (comparisonCostBase(a) - comparisonCostBase(b)));\n'''
+          if old not in text:
+              raise SystemExit('ranking pool anchor not found')
+          quotes.write_text(text.replace(old, new, 1))
+
+          tests = Path('test/quotes.test.mjs')
+          text = tests.read_text()
+          old = '''test("incomplete quote can be ranked provisionally but recommendation exposes uncertainty", () => {\n  const { mission, candidates } = fixture();\n  const a = candidates[0];\n  const b = candidates[1];\n  // Keep prices equal so current-offer revalidation does not invalidate either offer; isolate shipping completeness only.\n  const incomplete = readyConversation({ mission, candidate: a, source: "incomplete", unitPrice: 370, shippingCost: null });\n  const complete = readyConversation({ mission, candidate: b, source: "complete", unitPrice: 370, shippingCost: 1000 });\n  const analysis = analyzeQuotes(mission, [a, b], [incomplete, complete]);\n  const incompleteQuote = analysis.quotes.find(quote => quote.supplierId === a.id);\n  assert.ok(incompleteQuote.score);\n  if (analysis.recommendation.supplierId === a.id) {\n    assert.equal(analysis.recommendation.status, "provisional");\n    assert.ok(analysis.recommendation.risks.some(risk => /shippingCost/.test(risk)));\n  }\n});\n'''
+          new = '''test("incomplete landed-cost quote stays visible but cannot outrank a complete offer", () => {\n  const { mission, candidates } = fixture();\n  const a = candidates[0];\n  const b = candidates[1];\n  // Keep prices equal so current-offer revalidation does not invalidate either offer; isolate shipping completeness only.\n  const incomplete = readyConversation({ mission, candidate: a, source: "incomplete", unitPrice: 370, shippingCost: null });\n  const complete = readyConversation({ mission, candidate: b, source: "complete", unitPrice: 370, shippingCost: 1000 });\n  const analysis = analyzeQuotes(mission, [a, b], [incomplete, complete]);\n  const incompleteQuote = analysis.quotes.find(quote => quote.supplierId === a.id);\n  const completeQuote = analysis.quotes.find(quote => quote.supplierId === b.id);\n  assert.equal(incompleteQuote.rank, null);\n  assert.equal(incompleteQuote.score, null);\n  assert.equal(incompleteQuote.comparison.rankable, false);\n  assert.equal(incompleteQuote.comparison.basis, "incomplete-landed-cost");\n  assert.equal(completeQuote.rank, 1);\n  assert.equal(completeQuote.comparison.basis, "complete-landed-cost");\n  assert.equal(analysis.recommendation.supplierId, b.id);\n  assert.equal(analysis.recommendation.status, "recommended");\n});\n\ntest("analysis may make a provisional recommendation when every rankable offer lacks shipping cost", () => {\n  const { mission, candidates } = fixture();\n  const a = candidates[0];\n  const b = candidates[1];\n  const first = readyConversation({ mission, candidate: a, source: "provisional-a", unitPrice: 370, shippingCost: null });\n  const second = readyConversation({ mission, candidate: b, source: "provisional-b", unitPrice: 370, shippingCost: null });\n  const analysis = analyzeQuotes(mission, [a, b], [first, second]);\n  assert.ok(analysis.recommendation);\n  assert.equal(analysis.recommendation.status, "provisional");\n  assert.ok(analysis.recommendation.risks.some(risk => /shippingCost/.test(risk)));\n  assert.deepEqual(analysis.quotes.filter(quote => quote.rank).map(quote => quote.comparison.basis), ["known-cost-provisional", "known-cost-provisional"]);\n});\n\ntest("recommendation identity is stable across re-analysis dates when evidence is unchanged", () => {\n  const { mission, candidates } = fixture();\n  const a = candidates[0];\n  const b = candidates[1];\n  const first = readyConversation({ mission, candidate: a, source: "stable-a", unitPrice: 382, shippingCost: 900 });\n  const second = readyConversation({ mission, candidate: b, source: "stable-b", unitPrice: 382, shippingCost: 1200 });\n  const dayOne = analyzeQuotes(mission, [a, b], [first, second], { now: "2026-08-29T14:00:00.000Z" });\n  const dayTwo = analyzeQuotes(mission, [a, b], [first, second], { now: "2026-08-30T14:00:00.000Z" });\n  assert.equal(dayOne.recommendation.id, dayTwo.recommendation.id);\n  assert.equal(dayOne.recommendation.quoteId, dayTwo.recommendation.quoteId);\n});\n'''
+          if old not in text:
+              raise SystemExit('incomplete recommendation test anchor not found')
+          tests.write_text(text.replace(old, new, 1))
+
+          docs = Path('docs/QUOTES.md')
+          text = docs.read_text()
+          marker = '## Recommendation boundary\n'
+          insert = '''## Conservative comparability rule\n\nWhen at least one eligible offer has a complete landed cost, only complete-landed-cost offers receive a final rank. Offers with unknown shipping remain visible with `comparison.basis = incomplete-landed-cost`, but cannot win by appearing artificially cheaper.\n\nIf every otherwise-eligible offer lacks landed-cost inputs, Vendor Scout may produce a clearly `provisional` recommendation using known normalized cost. The missing fields remain attached as recommendation risks.\n\n'''
+          if insert not in text:
+              if marker not in text:
+                  raise SystemExit('quotes documentation marker not found')
+              text = text.replace(marker, insert + marker, 1)
+              docs.write_text(text)
+
+          Path('.github/workflows/one-shot-audit-quote-safety.yml').unlink(missing_ok=True)
+          PY
+      - name: Commit audited ranking fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m 'make quote ranking conservative under missing landed costs'
+          git push origin HEAD:build/quote-comparison
