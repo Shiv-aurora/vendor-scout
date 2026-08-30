@@ -1,112 +1,90 @@
 # Vendor Scout
 
-Vendor Scout is an autonomous procurement agent for hardware teams.
+> **Find better suppliers. Negotiate automatically. Approve the best deal.**
 
-**Find better suppliers. Negotiate automatically. Approve the best deal.**
+Vendor Scout is an autonomous procurement agent for hardware teams, built for the TrueForge Hackathon by WeMakeDevs.
 
-Built for the TrueForge Hackathon by WeMakeDevs, Vendor Scout turns one hardware need into a persistent sourcing mission:
+Give it one sourcing mission. It finds alternatives, qualifies them, starts RFQs, continues supplier conversations, negotiates against your constraints, normalizes the resulting offers, recommends the strongest deal, and stops before a consequential commitment.
 
-**Mission → Discover → Qualify → Contact → Negotiate → Compare → Human Approval → Approved Action**
-
-## What works now
-
-The current build executes the workflow through autonomous negotiation:
-
-- persistent Atlas Robotics sourcing mission for 500 LiDAR modules
-- complete mission policy: quantity, current supplier, target price, maximum lead time, allowed regions, technical requirements, confidence threshold, and sample budget
-- validated and persisted mission transitions
-- executable supplier discovery with a remote-provider contract
-- explicitly labeled controlled discovery fallback for demo reliability
-- provenance-backed ingestion for supplier research performed by TrueForge or another live tool
-- deterministic, explainable supplier qualification against mission constraints
-- Qualified / Needs review / Rejected outcomes with evidence
-- persistent one-thread-per-qualified-supplier RFQ conversations
-- non-binding RFQ generation requesting pricing tiers, MOQ, availability, lead time, shipping, samples, certifications, and technical confirmation
-- idempotent outbound transport with provider message IDs and retry-safe delivery
-- controlled outreach preview that sends no external message and does not claim real supplier contact
-- provenance-required supplier replies
-- structured supplier-offer terms anchored to recorded inbound messages
-- explicit negotiation-gap evaluation for price, MOQ, lead time, technical confirmation, and missing commercial evidence
-- goal-directed non-binding counter generation using mission constraints and stronger same-currency persisted competitor offers when available
-- multi-round counter delivery through the same idempotent supplier transport
-- automatic stop when an offer is ready for downstream comparison
-- automatic stop for human judgment on an explicit critical technical conflict
-- TrueForge persistent session and turn integration
-- Vendor Scout MCP server exposing ten sourcing/outreach/negotiation tools
-- production-default-deny mutation and MCP authentication boundaries
-- non-destructive state migration; current state contract `2.3.0`
-- command-center Conversations UI showing RFQ evidence, supplier replies, structured offers, exact negotiation gaps, counter rounds, and delivery truth
-- explicit human-approval boundary; no acceptance, purchase, or order tool exists
-
-Phase 8 quote normalization/landed-cost ranking, approval execution, and sample ordering are not implemented yet and are not presented as completed behavior.
-
-## Project docs
-
-- `docs/VISION.md` — product north star
-- `docs/IMPLEMENTATION.md` — phased implementation route
-- `docs/STATUS.md` — durable execution checkpoint
-- `docs/TRUEFORGE.md` — TrueForge + MCP setup and architecture
-- `docs/OUTREACH.md` — RFQ transport, idempotency, preview, and reply contract
-- `docs/NEGOTIATION.md` — structured offers, gap evaluation, counter loop, and Phase 7/8 boundary
-
-## Local run
-
-Vendor Scout requires Node.js 20 or newer.
-
-```bash
-npm install
-npm run dev
+```text
+Mission → Discover → Qualify → Contact → Negotiate → Compare → Human Approval → Approved Action
 ```
 
-Open `http://localhost:3000`.
+The primary demo follows one concrete story: **Atlas Robotics needs 500 production LiDAR modules with better economics and a lead time under 21 days.**
 
-The development seed opens after qualification so the command center is useful immediately. Use **Replay from draft** in Sourcing Missions to demonstrate persisted `Mission → Discover → Qualify`. Conversations can prepare and preview RFQs without contacting a real supplier when no external transport is configured.
+## Why this matters
 
-## Runtime configuration
+Hardware procurement is reactive. Teams often wait until a supplier becomes expensive, slow, unavailable, or risky before searching for alternatives, then spend days finding vendors, requesting quotes, chasing missing terms, negotiating, and comparing inconsistent offers.
 
-The server does not automatically load a `.env` file. Use `.env.example` as the environment-variable reference.
+Vendor Scout turns that work into an ongoing agent mission while keeping the consequential decision with a human.
 
-| Variable | Purpose |
-| --- | --- |
-| `PORT` | Vendor Scout HTTP port; defaults to `3000` |
-| `VENDOR_SCOUT_DATA_PATH` | Local JSON state path |
-| `VENDOR_SCOUT_AGENT_TOKEN` | Bearer token required for production mission mutations |
-| `VENDOR_SCOUT_MCP_TOKEN` | Optional separate bearer token for `/mcp`; otherwise agent token is reused |
-| `VENDOR_SCOUT_DISCOVERY_URL` | Optional external supplier-discovery provider |
-| `VENDOR_SCOUT_DISCOVERY_TOKEN` | Optional bearer token for discovery |
-| `VENDOR_SCOUT_OUTREACH_URL` | Optional external RFQ/counter transport |
-| `VENDOR_SCOUT_OUTREACH_TOKEN` | Optional bearer token for outreach transport |
-| `TRUEFORGE_BASE_URL` | TrueForge API origin, commonly `http://localhost:8790` locally |
-| `TRUEFORGE_AGENT_NAME` | Saved TrueForge agent used for Vendor Scout sessions |
-| `TRUEFORGE_TOKEN` | Optional bearer/OIDC token for protected TrueForge |
-| `VENDOR_SCOUT_ALLOW_FIXTURE_FALLBACK` | Explicitly allow controlled discovery fallback in production |
-| `VENDOR_SCOUT_ALLOW_OUTREACH_PREVIEW` | Explicitly allow simulated RFQ/counter preview in production |
-| `VENDOR_SCOUT_ENABLE_DEV_RESET` | Explicitly expose development reset in production |
+## Three demo moments
 
-Production defaults are restrictive: development reset, fixture discovery fallback, and controlled outreach/counter preview are disabled, while mutation/MCP endpoints require configured bearer credentials.
+### 1. The agent does procurement work, not chat
 
-## HTTP API
+Vendor Scout carries one persistent sourcing mission through discovery, qualification, RFQ creation, supplier replies, structured offer extraction, and multi-round negotiation. Every supplier fact and supplier message retains provenance; missing commercial data stays unknown instead of becoming a convenient zero.
 
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /health` | Runtime, contract, MCP, and TrueForge readiness |
-| `GET /api/capabilities` | Safe capability flags; never returns credentials |
-| `GET /api/dashboard` | Command-center state and summary |
-| `GET /api/missions/:id` | One sourcing mission and related evidence/conversations |
-| `POST /api/missions/:id/actions` | Validated mission execution, outreach, and TrueForge actions |
-| `POST /api/missions/:id/suppliers/:supplierId/reply` | Persist one provenance-backed supplier reply |
-| `POST /api/missions/:id/suppliers/:supplierId/offer` | Persist structured terms anchored to that supplier reply |
-| `POST /api/missions/:id/suppliers/:supplierId/counter` | Prepare or send one evidence-backed negotiation counter |
-| `POST /api/dev/reset` | Development-only replay reset unless explicitly enabled |
-| `POST /mcp` | Vendor Scout MCP JSON-RPC endpoint for TrueForge |
+### 2. It negotiates, then verifies the economics
 
-Current mission actions include `start`, `discover`, `qualify`, `prepare_outreach`, `send_outreach`, `connect_trueforge`, `start_trueforge_turn`, and `sync_trueforge_turn`.
+The agent counters explicit gaps in price, MOQ, lead time, technical confirmation, and missing information. Once offers are ready, TrueForge is instructed to use sandbox execution to independently check the quote math before Vendor Scout persists its deterministic comparison across quantity tiers, MOQ overbuy, FX, shipping, landed cost, lead time, supplier quality, samples, and evidence completeness.
 
-RFQ and counter delivery are retry-safe: messages have stable idempotency keys, accepted messages are not resent, and failed delivery remains retryable.
+Incomplete landed-cost offers stay visible, but cannot beat a complete landed-cost offer merely because an unknown shipping cost makes them look artificially cheap.
 
-## Vendor Scout MCP tools
+### 3. It cannot silently spend money
 
-The MCP endpoint exposes the same persisted workflow used by the UI/API:
+A successful comparison creates a real decision packet and moves the mission to `awaiting_approval`.
+
+The human sees the recommendation, competing offers, current-vs-negotiated economics, landed cost, savings, lead time, MOQ, shipping, supplier risk, sample terms, reasons, risks, and source evidence.
+
+The human chooses:
+
+- **Approve sample**
+- **Keep negotiating**
+- **Reject**
+
+Even **Approve sample** does not execute the purchase. It only records the business decision. On a later TrueForge turn, the agent may request `vendor_scout_execute_sample_order`; that MCP tool is marked destructive and configured for TrueForge tool approval, so the harness pauses again immediately before execution. Vendor Scout then independently verifies the persisted approval and sample budget before submitting the approved action.
+
+## Architecture
+
+```text
+                                   ┌──────────────────────────────┐
+                                   │      TrueForge session       │
+                                   │                              │
+                                   │  model / tool loop           │
+                                   │  web + supplier research     │
+                                   │  sandbox computation         │
+                                   │  optional subagents          │
+                                   │  destructive-tool approval   │
+                                   └──────────────┬───────────────┘
+                                                  │ MCP
+                                                  ▼
+┌───────────────────────┐              ┌───────────────────────────────┐
+│ Vendor Scout browser  │◄────────────►│ Vendor Scout Node server      │
+│                       │              │                               │
+│ Overview              │              │ sourcing mission state        │
+│ Missions              │              │ supplier evidence             │
+│ Suppliers             │              │ RFQ + conversations           │
+│ Conversations         │              │ negotiation state             │
+│ Approvals             │              │ quote normalization/ranking   │
+└───────────────────────┘              │ business approval records     │
+                                       │ approved sample action        │
+                                       └───────┬───────────┬───────────┘
+                                               │           │
+                                      outreach adapter   order adapter
+```
+
+Vendor Scout and TrueForge have intentionally different responsibilities:
+
+- **TrueForge** is the persistent autonomous-agent runtime: model loop, MCP orchestration, research tools, sandbox computation, optional subagents, and tool approval.
+- **Vendor Scout** is the procurement control plane: durable mission/evidence state, deterministic business rules, idempotency, provenance, comparison math, approval records, and server-side commitment enforcement.
+
+The same persisted mission is used by the UI, HTTP API, and MCP tools; the demo does not maintain a separate fake “AI state.”
+
+## TrueForge usage
+
+Vendor Scout uses one persistent TrueForge sourcing session rather than disconnected prompt calls.
+
+The current MCP surface exposes **12 tools**:
 
 1. `vendor_scout_get_mission`
 2. `vendor_scout_discover_suppliers`
@@ -118,99 +96,230 @@ The MCP endpoint exposes the same persisted workflow used by the UI/API:
 8. `vendor_scout_record_offer_terms`
 9. `vendor_scout_prepare_counter`
 10. `vendor_scout_send_counter`
+11. `vendor_scout_analyze_quotes`
+12. `vendor_scout_execute_sample_order` — **destructive / approval-gated**
 
-The negotiation tools are intentionally narrow. Offer terms must reference an existing inbound supplier message. Counter preparation is deterministic from persisted evidence. Counter sending is non-binding and idempotent. There is deliberately no `accept_offer`, `accept_terms`, `purchase`, `place_order`, or equivalent commitment tool.
+The saved TrueForge agent should enable sandbox execution and explicitly gate the final tool:
 
-## Negotiation evidence model
-
-Negotiation preserves this chain:
-
-```text
-supplier source/message
-        ↓
-persisted inbound reply
-        ↓
-structured explicit offer terms
-        ↓
-constraint-gap evaluation
-        ↓
-non-binding counter/request
-        ↓
-provider delivery state
+```json
+{
+  "name": "vendor-scout",
+  "enable_tools": ["@all"],
+  "require_approval_for_tools": [
+    "vendor_scout_execute_sample_order"
+  ],
+  "config": {
+    "sandbox": {
+      "enabled": true
+    }
+  }
+}
 ```
 
-Unknown offer fields stay unknown. Vendor Scout does not invent a price, MOQ, lead time, shipping term, sample term, certification, or technical confirmation.
+See [`docs/TRUEFORGE.md`](docs/TRUEFORGE.md) for the complete live-runtime setup and approval flow.
 
-The evaluator returns:
+## Procurement safety model
 
-- `needs_information` — required facts are still missing
-- `counter_required` — an explicit commercial/lead-time gap exists
-- `ready_for_comparison` — no unresolved negotiation gap remains; **this does not accept the offer**
-- `reject_recommended` — explicit critical technical conflict; autonomous countering stops for human judgment
+Vendor Scout does not rely on prompt text as its only guardrail.
 
-See `docs/NEGOTIATION.md` for the full contract.
+### Evidence boundaries
 
-## Discovery and outreach truth boundaries
+- supplier research requires `sourceReference`
+- contact information preserves its source
+- supplier replies require provenance and deduplicate provider message IDs
+- structured offer terms must reference an already-persisted inbound message
+- unknown price / MOQ / lead time / shipping / FX remains unknown
+- cross-currency analysis requires a positive FX rate with source provenance
 
-Supplier records require provenance. Unknown pricing, MOQ, or lead time causes review rather than being invented as zero.
+### Outreach boundaries
 
-For outreach:
+- RFQs and counters are non-binding
+- every outbound message has a stable idempotency key
+- accepted messages are never resent
+- failed delivery remains retryable
+- `.example` fixture contacts are blocked from live delivery
+- controlled preview sends no external message and never counts as real supplier contact
 
-- **Controlled preview:** persists the exact RFQ/counter, sends nothing external, and never increments real-contact metrics.
-- **External transport:** sends only to a non-demo contact through `VENDOR_SCOUT_OUTREACH_URL`, includes `Idempotency-Key`, and records provider acceptance/message ID.
-- `.example` fixture contacts are blocked from a real provider.
-- supplier replies require `sourceReference` and are deduplicated.
+### Commitment boundaries
 
-## TrueForge
+- quote analysis cannot accept terms or spend money
+- comparison creates a pending Approval packet
+- business approval does not execute the action
+- sample execution requires a matching persisted human approval
+- the sample-order MCP tool is explicitly destructive for the TrueForge harness gate
+- sample cost must remain within the mission budget
+- sample execution is idempotent across retries
 
-TrueForge stays a separate runtime because its current packages require Node.js 22+, while Vendor Scout remains Node 20 compatible. Vendor Scout talks to TrueForge through its HTTP session API and exposes the ten procurement tools through MCP.
+## The decision packet
 
-The TrueForge prompt now describes the complete persisted loop:
+The Approvals screen is the climax of the product, not a decorative confirmation modal.
 
-```text
-read mission
-→ research / record candidates
-→ qualify
-→ prepare / send RFQ
-→ record supplier reply
-→ record explicit offer terms
-→ prepare / send counter
-→ repeat until ready for comparison or human review
+It shows:
+
+- recommended supplier and decision score
+- current vs negotiated unit price
+- complete landed cost, or explicit incomplete-cost state
+- projected savings
+- current vs proposed lead time
+- MOQ
+- shipping terms/cost
+- supplier qualification/risk
+- sample availability and cost
+- all supplier offers, including incomplete/unrankable evidence
+- transparent scoring components
+- recommendation reasons and risks
+- source references
+
+After approval, the screen explicitly distinguishes:
+
+1. **business approval recorded, execution still gated**
+2. **TrueForge destructive-tool approval**
+3. **real provider submission or controlled simulated action**
+
+A controlled sample action is displayed as simulated and explicitly states that no external spend occurred.
+
+## Run locally
+
+Vendor Scout requires Node.js 20 or newer.
+
+```bash
+npm install
+npm run dev
 ```
 
-See `docs/TRUEFORGE.md` for setup details.
+Open:
+
+```text
+http://localhost:3000
+```
+
+### Jump directly to the decision climax
+
+With the local server running:
+
+```bash
+npm run demo:decision
+```
+
+This deterministic demo builder resets the mission, creates two controlled supplier conversation/offer records, runs the real quote engine, and leaves the mission at `awaiting_approval`.
+
+Then open:
+
+```text
+http://localhost:3000/#app/approvals
+```
+
+The demo builder is intentionally honest: its supplier messages are labeled controlled evidence and it does not claim any real supplier was contacted.
+
+### Run the full agent path
+
+Start TrueForge separately:
+
+```bash
+npx @truefoundry/trueforge
+```
+
+Then follow [`docs/TRUEFORGE.md`](docs/TRUEFORGE.md) to attach the Vendor Scout Streamable HTTP MCP endpoint at `/mcp`, enable the sandbox, and configure the destructive sample-order approval gate.
+
+## Runtime configuration
+
+See [`.env.example`](.env.example). Important variables include:
+
+| Variable | Purpose |
+| --- | --- |
+| `VENDOR_SCOUT_AGENT_TOKEN` | production mutation authentication |
+| `VENDOR_SCOUT_MCP_TOKEN` | MCP bearer authentication |
+| `VENDOR_SCOUT_DISCOVERY_URL` | optional external supplier discovery |
+| `VENDOR_SCOUT_OUTREACH_URL` | optional external RFQ/counter transport |
+| `VENDOR_SCOUT_ORDER_URL` | optional approved sample-order adapter |
+| `TRUEFORGE_BASE_URL` | TrueForge server origin |
+| `TRUEFORGE_AGENT_NAME` | saved TrueForge agent name |
+| `TRUEFORGE_TOKEN` | optional hosted/OIDC token |
+| `VENDOR_SCOUT_ALLOW_FIXTURE_FALLBACK` | production opt-in for controlled discovery |
+| `VENDOR_SCOUT_ALLOW_OUTREACH_PREVIEW` | production opt-in for controlled outreach preview |
+| `VENDOR_SCOUT_ALLOW_ORDER_PREVIEW` | production opt-in for controlled sample action |
+
+Production defaults deny fixture fallbacks/previews and require configured bearer authentication for mutation/MCP endpoints.
 
 ## Verification
 
 ```bash
-npm test
 npm run check
 ```
 
-The exact Phase 7 checkpoint passes **48/48 tests** on Node 20.20.2. Coverage includes:
+Validation covers:
 
-- discovery/qualification/migrations
-- production auth/default-deny behavior
-- TrueForge session/turn persistence
-- ten-tool MCP contract and safety annotations
-- RFQ construction/delivery/idempotency
-- partial outreach retry after negotiation begins
-- supplier-reply provenance/deduplication
-- structured-offer provenance
-- price/MOQ/lead-time gap evaluation
-- stronger same-currency competitor benchmark
-- stable counter IDs/idempotency keys
-- multi-round real-provider negotiation
-- duplicate counter-send prevention
-- stop-for-comparison behavior
-- stop-for-human technical-conflict behavior
+- sourcing mission lifecycle
+- discovery and provenance
+- qualification decisions
+- migrations / persistence
+- production default-deny behavior
+- persistent TrueForge session/turn adapter
+- MCP schemas and annotations
+- RFQ delivery and retry/idempotency
+- supplier reply provenance
+- structured offer extraction
+- multi-round negotiation
+- stale-offer revalidation
+- FX provenance
+- quantity-tier and MOQ normalization
+- landed cost and conservative incomplete-cost handling
+- transparent quote scoring/ranking
+- approval packet creation
+- Approve / Keep negotiating / Reject paths
+- denial of sample execution before business approval
+- sample budget checks
+- sample execution idempotency
+- real-vs-controlled order truth
+- desktop/mobile browser workflows for sourcing, conversations, negotiation, comparison, approval, and completed controlled action
 
-GitHub Actions additionally runs desktop/mobile Chromium validation. The dedicated negotiation workflow constructs controlled negotiation evidence, persists an offer, prepares/previews a counter, verifies the exact gaps in state, renders `#app/conversations`, and saves screenshot/DOM artifacts.
+`docs/STATUS.md` records the exact latest validated checkpoint and any external validation still outstanding.
 
-## Persistence note
+## Demo reliability and truthfulness
 
-`FileDemoStore` is intentionally lightweight for the hackathon and serializes mutations within one Vendor Scout process. It is not a multi-instance transactional database. Durable concurrent storage remains required before broad production use.
+The demo is narrow on purpose: one LiDAR sourcing mission, end to end.
 
-## Next milestone
+External services are allowed to fail without destroying the presentation, but controlled fallbacks are never disguised as real evidence:
 
-Phase 8 will normalize finalized supplier offers into comparable quote records, calculate landed-cost economics, rank offers, and produce an evidence-backed recommendation. It must still stop before acceptance or purchase and route the recommendation into the human approval boundary.
+- controlled supplier discovery is labeled fixture evidence
+- controlled RFQ/counter preview sends no email
+- controlled supplier responses are labeled controlled demo messages
+- controlled sample action records no external spend
+- a real provider path uses the same persisted workflow with explicit provider IDs
+
+This lets the demo remain dependable without turning the product into a sequence of fake AI screenshots.
+
+## Hackathon scope / reused shell
+
+Vendor Scout was built during the hackathon on top of the repository's existing lightweight hardware-dashboard/product shell. That shell supplied useful styling and hardware context; the procurement mission model, agent/MCP boundary, discovery/qualification execution, outreach, conversations, negotiation, quote engine, decision system, approval enforcement, sample-action path, tests, and hackathon-specific product framing are the hackathon implementation.
+
+The Git history in this repository begins during the hackathon window.
+
+## AI-assisted development disclosure
+
+Development used OpenAI/ChatGPT-assisted engineering for implementation, debugging, review, and documentation. All generated changes were inspected against repository state and validated through the project's automated/runtime/browser checks before being treated as complete.
+
+## Qodo Code Review Evidence
+
+**Current status: required external review evidence is still pending.**
+
+The repository currently has stacked implementation PRs with `/review` / `/agentic_review` requests, but the Qodo GitHub App has not attached an actual submitted review/check to the private repository. Those command comments are **not** being represented as completed Qodo review evidence.
+
+No remaining substantive implementation PR should be merged until Qodo is correctly authorized, its findings are addressed or explicitly dismissed with rationale, and follow-up review is requested where required.
+
+Once the GitHub App is authorized, this section should link the representative final Qodo-reviewed PR and summarize the reviewed findings/fixes before submission.
+
+## Project documentation
+
+- [`docs/VISION.md`](docs/VISION.md) — product north star
+- [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md) — phased implementation route
+- [`docs/STATUS.md`](docs/STATUS.md) — durable execution checkpoint
+- [`docs/TRUEFORGE.md`](docs/TRUEFORGE.md) — live TrueForge/MCP/sandbox/approval setup
+- [`docs/OUTREACH.md`](docs/OUTREACH.md) — RFQ transport contract
+- [`docs/NEGOTIATION.md`](docs/NEGOTIATION.md) — structured offer + negotiation loop
+- [`docs/QUOTES.md`](docs/QUOTES.md) — quote normalization/ranking contract
+- [`docs/QODO_REVIEW.md`](docs/QODO_REVIEW.md) — Qodo review focus
+
+## Production boundary
+
+The hackathon build uses a single-process atomic JSON store. It is restart-persistent and deliberately fail-closed on unknown state versions, but it is not a multi-instance transactional database. A broader production deployment should replace it with durable concurrent storage without changing the procurement-domain contract.
