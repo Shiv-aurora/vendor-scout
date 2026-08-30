@@ -26,12 +26,12 @@ Vendor Scout Node server ──────────────────�
                                                └─ human tool-approval gate
 ```
 
-Vendor Scout stays Node 20 compatible. Current TrueForge packages require a newer Node runtime, so TrueForge runs as a separate service instead of being imported into Vendor Scout.
+Vendor Scout stays Node 20 compatible. Current TrueForge packages require Node 22 or newer, so TrueForge runs as a separate service instead of being imported into Vendor Scout.
 
 ## 1. Start TrueForge
 
 ```bash
-npx @truefoundry/trueforge
+npx @truefoundry/trueforge@latest
 ```
 
 The normal local origin is:
@@ -112,12 +112,17 @@ Representative agent configuration:
   "disable_tools": [],
   "preload_tools": [
     "vendor_scout_get_mission",
+    "vendor_scout_discover_suppliers",
     "vendor_scout_record_supplier_candidates",
     "vendor_scout_qualify_suppliers",
     "vendor_scout_prepare_rfqs",
+    "vendor_scout_send_rfqs",
+    "vendor_scout_record_supplier_reply",
     "vendor_scout_record_offer_terms",
     "vendor_scout_prepare_counter",
-    "vendor_scout_analyze_quotes"
+    "vendor_scout_send_counter",
+    "vendor_scout_analyze_quotes",
+    "vendor_scout_execute_sample_order"
   ],
   "require_approval_for_tools": [
     "vendor_scout_execute_sample_order"
@@ -315,4 +320,4 @@ Repository tests cover:
 - controlled-versus-real order truth
 - desktop/mobile decision UI
 
-The final external validation still requires launching a real TrueForge runtime with a configured model, attaching the Vendor Scout MCP connector, observing sandbox execution, and visually confirming the `tool.approval_required` pause for `vendor_scout_execute_sample_order`.
+That external validation was completed on 2026-08-30 with TrueForge `0.1.4`, a local Ollama model, the authenticated Vendor Scout MCP connector, real local-sandbox execution, and both denied and allowed `tool.approval_required` resume paths. Exact session, turn, call, arithmetic, and final controlled-order evidence is recorded in `docs/STATUS.md`.

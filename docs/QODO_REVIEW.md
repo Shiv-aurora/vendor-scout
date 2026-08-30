@@ -4,7 +4,11 @@ Vendor Scout is being built for a hackathon that requires substantive pull-reque
 
 ## Current gate
 
-Qodo review commands have been posted on PRs #2, #3, and #4, but GitHub currently shows no submitted Qodo review/check/thread for those PRs. A command comment is not treated as review evidence.
+As of 2026-08-30, PR #5 has two `/agentic_review` command comments, all automated repository checks are green, and GitHub reports **zero submitted reviews**. A command comment is not treated as review evidence.
+
+The Qodo Merge Pro Marketplace page is available at <https://github.com/marketplace/qodo-merge-pro>, but installing/authorizing the GitHub App requires an authenticated interactive GitHub browser session. That authorization could not be completed from the logged-out browser available during the integration run.
+
+Required owner action: sign in to GitHub in the browser, install Qodo Merge Pro for `Shiv-aurora/vendor-scout` (or the owning account with this repository selected), then trigger a fresh review on <https://github.com/Shiv-aurora/vendor-scout/pull/5>. Do not treat the existing command comments as evidence.
 
 Do not merge the remaining substantive PR chain until Qodo is correctly authorized for the repository and an actual review exists.
 

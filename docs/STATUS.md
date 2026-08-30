@@ -1,8 +1,8 @@
 # Status
 
-Current phase: **Phases 1–15 are complete from the repository side.** The remaining gates are external hackathon/runtime actions, not missing Vendor Scout product phases.
+Current phase: **Phases 1–15 and the live TrueForge integration proof are complete.** The remaining gates are external hackathon actions, not missing Vendor Scout product phases.
 
-Current objective: preserve the green PR #5 branch while completing a **real TrueForge harness proof**, **real Qodo review**, **public-repository publication**, and the final submission/video.
+Current objective: preserve the green PR #5 branch while completing a **real Qodo review** and the final submission/video.
 
 ## Product complete
 
@@ -39,6 +39,23 @@ Current objective: preserve the green PR #5 branch while completing a **real Tru
 Current state contract: `2.5.0`. Known prior procurement contracts migrate non-destructively; unknown versions fail closed.
 
 Production defaults deny mutation/MCP access without configured credentials and disable fixture discovery, outreach preview, sample preview, and dev reset unless explicitly enabled.
+
+## Live TrueForge proof — 2026-08-30
+
+The real integration was executed locally with the official TrueForge `0.1.4` package, Node 22, a local Ollama `gemma4:e4b` tool-calling model, TrueForge's local sandbox fallback, and Vendor Scout's authenticated Streamable HTTP MCP endpoint.
+
+- Saved TrueForge agent: `vendor-scout` (`01m18dwdy3fgevk63c69rq3sym`), sandbox enabled, all 12 Vendor Scout tools loaded, and `vendor_scout_execute_sample_order` in `require_approval_for_tools`.
+- Persistent proof session: `01m18epjskwyd64p61d928dmvs`.
+- Real MCP calls included RFQ preparation/delivery and quote analysis. Quote-analysis turn `01m18er3e2spychp4ayxwgh50r.local` called `vendor_scout_analyze_quotes` and moved the mission to `awaiting_approval`.
+- TrueForge sandbox turn `01m18f2hrgn9xv8njna7fy4jm5.local` executed Python successfully and independently recomputed the evidence: baseline `214500`, HelioMotion landed `191900` / savings `22600`, ScanWorks landed `192300` / savings `22200`, with HelioMotion lower on landed cost.
+- Vendor Scout business approval `approval-df79ff4bf58b85a40e` changed the mission to `approved` while `sampleOrders=[]`; it did not execute the sample action.
+- Destructive-tool turn `01m18f5y4cdbkrd8zyqvhqrarr.local` produced a real `tool.approval_required` for call `call_epjcdu5a`. Denying it resumed as `01m18famr4zassnrev3mkvvgm2.local`; TrueForge reported the denial and no order was created.
+- Fresh destructive-tool turn `01m18fj563czdnch7mh4f6pggd.local` paused again for call `call_ckb0ex5r`. Allowing that exact call resumed as `01m18fkwym2h91mtwh1hxqy4fm.local` and reached Vendor Scout execution.
+- Final persisted state is `completed` with one order: provider `controlled-sample-order`, status `simulated`, quantity `1`, total `USD 220`, and `externalOrderId=null`. No supplier communication or money movement occurred.
+- Live integration exposed one compatibility defect: TrueForge `0.1.4` accepts session creation at `POST /api/v1/sessions` but returned 404 for the former trailing-slash path. The adapter and regression tests now use the verified route.
+- Desktop approval UI rendered without an error. A device-metrics-emulated 390×844 check reported `innerWidth=390`, `documentWidth=390`, active `view-approvals`, and no workspace error.
+- `npm ci` completed with zero vulnerabilities; `npm run check` passed all 68 tests; the isolated `npm run demo:decision` reached `awaiting_approval`; and live health, dashboard, capabilities, and authenticated MCP checks passed.
+- Repository publication audit scanned tracked files and all reachable commits for known credential/private-key forms, credential-bearing URLs, credential-like assignments, and unexpected credential files. It found no secrets; `.env.example` contains placeholders only. The repository was changed from private to **public** after the audit.
 
 ## Latest verified code-bearing checkpoint
 
@@ -92,20 +109,10 @@ Test coverage includes:
 
 ## External gates still required
 
-1. **Real TrueForge harness proof** — run a current TrueForge server with a configured model, attach Vendor Scout MCP, visibly call Vendor Scout tools, use sandbox computation, reach `awaiting_approval`, record the Vendor Scout business decision, then show a real `tool.approval_required` pause on `vendor_scout_execute_sample_order` and resolve it through TrueForge.
-2. **Qodo** — authorize/install Qodo for this repository and obtain actual review evidence on PR #5 (and satisfy the required review chain as far as the hackathon rules require).
-3. **Public repository** — repo is still private. The available GitHub connector here does not expose a visibility mutation. Make the repo public before submission; MIT license and public-facing disclosures are already present.
-4. **Submission/video** — record the one-story demo in `docs/DEMO.md` and link the public repo, representative reviewed PR/Qodo evidence, and final assets.
-5. **Deployment** — no deploy is currently verified from this environment; the connected Vercel account returned no available teams/projects. Do not claim a public deployment until it is actually checked.
+1. **Qodo** — the Qodo GitHub App must be installed/authorized for `Shiv-aurora/vendor-scout`, then an actual review must be obtained on PR #5. The install page requires an authenticated interactive GitHub browser session that was unavailable in this run. Two `/agentic_review` comments exist, but PR #5 still has zero submitted reviews; those comments are not review evidence.
+2. **Submission/video** — record the one-story demo in `docs/DEMO.md` and link the public repo, representative reviewed PR/Qodo evidence, and final assets.
+3. **Deployment** — no public deployment was created or modified in this run. Do not claim one until it is independently verified.
 
-## Codex handoff
+## Codex integration result
 
-Per `Integrations.md`, normal repo implementation did not justify Codex. The remaining real TrueForge validation **does**: it requires two persistent services, model/provider setup, MCP networking, sandbox execution, interactive approval behavior, and likely shell/runtime debugging.
-
-Codex is not exposed as an executable tool in the current ChatGPT session, so no handoff has been falsely claimed as executed. A complete self-contained handoff is persisted in:
-
-```text
-docs/CODEX_HANDOFF.md
-```
-
-If a Codex environment becomes available, use that file as the exact external integration task. Any returned changes/evidence must be inspected in GitHub before acceptance, and PR #5 must remain behind the Qodo gate.
+The scoped Codex handoff was executed on `build/final-product-copy2`. The real runtime proof and the one compatibility fix are recorded above. PR #5 remains open and must remain unmerged until the external Qodo gate is satisfied.

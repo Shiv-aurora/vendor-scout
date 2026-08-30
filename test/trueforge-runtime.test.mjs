@@ -34,7 +34,7 @@ async function startMockTrueForge() {
       res.end(JSON.stringify(value));
     };
 
-    if (req.method === "POST" && req.url === "/api/v1/sessions/") {
+    if (req.method === "POST" && req.url === "/api/v1/sessions") {
       assert.deepEqual(body, { agent: { name: "vendor-scout" } });
       return send(201, { data: { id: "sess-42" } });
     }

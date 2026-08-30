@@ -19,7 +19,7 @@ async function startMockTrueForge() {
       res.end(JSON.stringify(value));
     };
 
-    if (req.method === "POST" && req.url === "/api/v1/sessions/") {
+    if (req.method === "POST" && req.url === "/api/v1/sessions") {
       return send(201, { data: { id: "sess-vendor-scout", agent: { type: "reference", name: "vendor-scout", id: "agent-1" } } });
     }
     if (req.method === "GET" && req.url === "/api/v1/sessions/sess-vendor-scout") {
@@ -63,6 +63,7 @@ test("TrueForge adapter creates a named persistent session and non-streaming tur
   assert.equal(done.state.status, "done");
 
   assert.deepEqual(mock.requests[0].body, { agent: { name: "vendor-scout" } });
+  assert.equal(mock.requests[0].url, "/api/v1/sessions");
   assert.equal(mock.requests[0].authorization, "Bearer id-token");
   assert.equal(mock.requests[1].body.stream, false);
   assert.equal(mock.requests[1].body.input[0].type, "user.message");

@@ -1,5 +1,7 @@
 # Codex Handoff — Live TrueForge Validation
 
+> Integration result (2026-08-30): this handoff was executed on `build/final-product-copy2`. Real TrueForge `0.1.4` + local Ollama + authenticated Vendor Scout MCP, sandbox arithmetic, business approval without execution, a destructive-tool approval pause, denial without bypass, and a separately allowed controlled sample action were all proven. The compatibility fix and exact evidence are in `docs/STATUS.md`. Qodo remains blocked only on interactive GitHub App installation/authorization. Do not rerun this handoff as though it were still pending.
+
 Use this handoff **only** in a Codex/development environment that can run persistent local services, configure model providers, expose local networking, and interact with the TrueForge harness. Ordinary Vendor Scout implementation is already complete in GitHub; do not use Codex merely because the project is large.
 
 ## Repository

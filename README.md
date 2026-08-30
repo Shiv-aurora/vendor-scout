@@ -118,6 +118,8 @@ The saved TrueForge agent should enable sandbox execution and explicitly gate th
 
 See [`docs/TRUEFORGE.md`](docs/TRUEFORGE.md) for the complete live-runtime setup and approval flow.
 
+The live path was verified on 2026-08-30 with TrueForge `0.1.4`, a local Ollama tool-calling model, authenticated Vendor Scout MCP, real sandbox arithmetic, a persisted business approval, a real destructive-tool approval pause, denial without execution, and a separately allowed controlled sample action. The final action remained explicitly simulated with no external spend; exact evidence IDs are in [`docs/STATUS.md`](docs/STATUS.md).
+
 ## Procurement safety model
 
 Vendor Scout does not rely on prompt text as its only guardrail.
@@ -303,7 +305,9 @@ Development used OpenAI/ChatGPT-assisted engineering for implementation, debuggi
 
 **Current status: required external review evidence is still pending.**
 
-The repository currently has stacked implementation PRs with `/review` / `/agentic_review` requests, but the Qodo GitHub App has not attached an actual submitted review/check to the private repository. Those command comments are **not** being represented as completed Qodo review evidence.
+PR [#5](https://github.com/Shiv-aurora/vendor-scout/pull/5) has two `/agentic_review` requests and green repository checks, but the Qodo GitHub App has attached **zero submitted reviews**. Those command comments are **not** being represented as completed Qodo review evidence.
+
+The remaining external action is to sign in to GitHub, install/authorize [Qodo Merge Pro](https://github.com/marketplace/qodo-merge-pro) for this repository, and trigger a fresh review on PR #5.
 
 No remaining substantive implementation PR should be merged until Qodo is correctly authorized, its findings are addressed or explicitly dismissed with rationale, and follow-up review is requested where required.
 
