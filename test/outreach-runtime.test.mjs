@@ -79,6 +79,41 @@ async function startOutreachProvider() {
   return { url: `http://127.0.0.1:${port}`, requests, close: () => new Promise(resolve => server.close(resolve)) };
 }
 
+async function startPartialFailureProvider() {
+  const requests = [];
+  const attemptsByRecipient = new Map();
+  const acceptedByKey = new Map();
+  const server = http.createServer(async (req, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    const key = req.headers["idempotency-key"];
+    const body = JSON.parse(raw);
+    const recipient = body.message.to;
+    const attempt = (attemptsByRecipient.get(recipient) || 0) + 1;
+    attemptsByRecipient.set(recipient, attempt);
+    requests.push({ key, body, attempt });
+
+    if (recipient === "sales@supplier-two.test" && attempt === 1) {
+      res.writeHead(503, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "temporary supplier-two delivery failure" }));
+    }
+
+    if (!acceptedByKey.has(key)) {
+      acceptedByKey.set(key, { status: "accepted", messageId: `provider-${acceptedByKey.size + 1}` });
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(acceptedByKey.get(key)));
+  });
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+  const { port } = server.address();
+  return {
+    url: `http://127.0.0.1:${port}`,
+    requests,
+    attemptsByRecipient,
+    close: () => new Promise(resolve => server.close(resolve))
+  };
+}
+
 const liveCandidates = [
   {
     name: "Live Lidar One",
@@ -161,6 +196,49 @@ test("real outreach provider advances contacting to negotiating exactly once", a
   response = await fetch(`${runtime.baseUrl}/api/dashboard`);
   const dashboard = await response.json();
   assert.equal(dashboard.summary.suppliersContacted, 2);
+});
+
+test("failed supplier outreach can retry after another supplier reply starts negotiation", async t => {
+  const provider = await startPartialFailureProvider();
+  t.after(provider.close);
+  const directory = await mkdtemp(join(tmpdir(), "vendor-scout-outreach-partial-"));
+  const port = await freePort();
+  const runtime = await startServer({
+    ...process.env,
+    PORT: String(port),
+    NODE_ENV: "development",
+    VENDOR_SCOUT_DATA_PATH: join(directory, "runtime.json"),
+    VENDOR_SCOUT_OUTREACH_URL: provider.url,
+    TRUEFORGE_BASE_URL: ""
+  });
+  t.after(() => stop(runtime.child));
+
+  await postJson(`${runtime.baseUrl}/api/dev/reset`, { stage: "draft" });
+  let snapshot = await mcp(runtime.baseUrl, 30, "vendor_scout_record_supplier_candidates", { missionId: "mission-lidar-500", candidates: liveCandidates });
+  snapshot = await mcp(runtime.baseUrl, 31, "vendor_scout_qualify_suppliers", { missionId: "mission-lidar-500" });
+  snapshot = await mcp(runtime.baseUrl, 32, "vendor_scout_prepare_rfqs", { missionId: "mission-lidar-500" });
+  snapshot = await mcp(runtime.baseUrl, 33, "vendor_scout_send_rfqs", { missionId: "mission-lidar-500" });
+
+  assert.equal(snapshot.mission.status, "contacting");
+  const first = snapshot.conversations.find(conversation => conversation.supplierName === "Live Lidar One");
+  const second = snapshot.conversations.find(conversation => conversation.supplierName === "Live Lidar Two");
+  assert.equal(first.status, "rfq_sent");
+  assert.equal(second.status, "delivery_failed");
+
+  snapshot = await mcp(runtime.baseUrl, 34, "vendor_scout_record_supplier_reply", {
+    missionId: "mission-lidar-500",
+    supplierId: first.supplierId,
+    content: "We can proceed with the RFQ and will send final commercial terms shortly.",
+    sourceReference: "gmail/message/partial-reply",
+    providerMessageId: "partial-reply"
+  });
+  assert.equal(snapshot.mission.status, "negotiating");
+
+  snapshot = await mcp(runtime.baseUrl, 35, "vendor_scout_send_rfqs", { missionId: "mission-lidar-500" });
+  assert.equal(snapshot.mission.status, "negotiating");
+  assert.equal(snapshot.conversations.find(conversation => conversation.supplierName === "Live Lidar Two").status, "rfq_sent");
+  assert.equal(provider.attemptsByRecipient.get("rfq@supplier-one.test"), 1, "already accepted supplier must not be resent");
+  assert.equal(provider.attemptsByRecipient.get("sales@supplier-two.test"), 2, "failed supplier should retry once negotiation is active");
 });
 
 test("controlled preview creates conversation evidence but does not claim real outreach", async t => {
