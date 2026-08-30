@@ -1103,4 +1103,8 @@ export async function handleRequest(req, res) {
 }
 
 const server = http.createServer(handleRequest);
-server.listen(port, () => console.log(`Vendor Scout listening on http://localhost:${port}`));
+if (!process.env.VERCEL) {
+  server.listen(port, () => console.log(`Vendor Scout listening on http://localhost:${port}`));
+}
+
+export default server;
