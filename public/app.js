@@ -9,6 +9,7 @@ const number = value => Number.isFinite(value) ? new Intl.NumberFormat("en-US").
 const money = value => Number.isFinite(value) ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value) : "—";
 const money2 = value => Number.isFinite(value) ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(value) : "—";
 const days = value => Number.isFinite(value) ? `${number(value)} days` : "—";
+const appViews = new Set(["overview", "missions", "suppliers", "conversations", "approvals"]);
 
 const stageNames = {
   draft: "Mission ready",
@@ -21,6 +22,17 @@ const stageNames = {
   approved: "Approved action",
   rejected: "Rejected",
   completed: "Completed"
+};
+
+const conversationStates = {
+  rfq_draft: { label: "RFQ draft", tone: "fixture" },
+  sending: { label: "Sending", tone: "fixture" },
+  previewed: { label: "Controlled preview — no email sent", tone: "fixture" },
+  rfq_sent: { label: "RFQ sent", tone: "live" },
+  delivery_failed: { label: "Delivery failed", tone: "critical" },
+  missing_contact: { label: "Missing contact", tone: "critical" },
+  supplier_replied: { label: "Supplier replied", tone: "live" },
+  negotiating: { label: "Negotiating", tone: "live" }
 };
 
 const progressByStatus = {
@@ -90,6 +102,19 @@ function providerLabel(currentMission) {
   if (provider === "remote") return { text: "Live discovery provider", className: "live" };
   if (provider === "controlled-fixture") return { text: "Controlled demo fallback", className: "fixture" };
   return { text: "Discovery provider not configured", className: "" };
+}
+
+function hashView() {
+  if (!location.hash.startsWith("#app")) return null;
+  const view = location.hash.split("/")[1] || "overview";
+  return appViews.has(view) ? view : "overview";
+}
+
+function openView(view = "overview") {
+  const safeView = appViews.has(view) ? view : "overview";
+  const hash = safeView === "overview" ? "#app" : `#app/${safeView}`;
+  if (location.hash !== hash) history.pushState(null, "", hash);
+  showApp(safeView);
 }
 
 function renderLanding() {
@@ -241,20 +266,97 @@ function renderSuppliers() {
     const checkSummary = candidate.qualification
       ? `${Object.values(candidate.qualification.checks).filter(Boolean).length}/${Object.keys(candidate.qualification.checks).length} checks passed`
       : "Awaiting qualification";
-    return `<article class="panel source-card"><header><div><h3>${escapeHtml(candidate.name)}</h3><code>${escapeHtml(candidate.type)}</code></div><span class="severity ${qualificationClass(candidate.status)}">${escapeHtml(candidate.status.replaceAll("_", " "))}</span></header><p class="source-region">${escapeHtml(candidate.country)} · ${escapeHtml(candidate.region)}</p><div class="source-stats"><span>Preliminary price<b>${money2(candidate.preliminaryUnitPrice)}</b></span><span>Lead time<b>${days(candidate.leadTimeDays)}</b></span><span>Confidence<b>${Math.round(candidate.confidence * 100)}%</b></span></div><p>${escapeHtml(candidate.reason || "Discovered candidate; qualification has not run yet.")}</p><div class="supplier-proof"><span>${escapeHtml(candidate.source?.kind || "unknown source")}</span><span>${escapeHtml(candidate.source?.reference || "no reference")}</span><span>${escapeHtml(checkSummary)}</span></div></article>`;
+    const contact = candidate.contact?.email || candidate.contactEmail || "No verified contact";
+    return `<article class="panel source-card"><header><div><h3>${escapeHtml(candidate.name)}</h3><code>${escapeHtml(candidate.type)}</code></div><span class="severity ${qualificationClass(candidate.status)}">${escapeHtml(candidate.status.replaceAll("_", " "))}</span></header><p class="source-region">${escapeHtml(candidate.country)} · ${escapeHtml(candidate.region)}</p><div class="source-stats"><span>Preliminary price<b>${money2(candidate.preliminaryUnitPrice)}</b></span><span>Lead time<b>${days(candidate.leadTimeDays)}</b></span><span>Confidence<b>${Math.round(candidate.confidence * 100)}%</b></span></div><p>${escapeHtml(candidate.reason || "Discovered candidate; qualification has not run yet.")}</p><div class="supplier-proof"><span>${escapeHtml(candidate.source?.kind || "unknown source")}</span><span>${escapeHtml(candidate.source?.reference || "no reference")}</span><span>${escapeHtml(contact)}</span><span>${escapeHtml(checkSummary)}</span></div></article>`;
   }).join("");
 
   $("#supplier-table-body").innerHTML = candidates.map(candidate => `<tr><td><span>${escapeHtml(candidate.name)}</span><small>${escapeHtml(candidate.source?.reference || "—")}</small></td><td>${escapeHtml(candidate.type)}</td><td>${money2(candidate.preliminaryUnitPrice)}</td><td>${number(candidate.moq)}</td><td>${days(candidate.leadTimeDays)}</td><td>${Math.round(candidate.specMatch * 100)}%</td><td><span class="availability ${candidate.status === "qualified" ? "in_stock" : "low_stock"}">● ${escapeHtml(candidate.status.replaceAll("_", " "))}</span></td></tr>`).join("");
 }
 
+function outboundMessage(conversation) {
+  return conversation?.messages?.find(message => message.direction === "outbound" && message.type === "rfq") || null;
+}
+
+function latestReply(conversation) {
+  return [...(conversation?.messages || [])].reverse().find(message => message.direction === "inbound") || null;
+}
+
 function renderConversations() {
   const currentMission = mission();
   const qualified = data.supplierCandidates.filter(candidate => candidate.missionId === currentMission.id && candidate.status === "qualified");
+  const conversations = data.conversations.filter(conversation => conversation.missionId === currentMission.id);
+  const bySupplier = new Map(conversations.map(conversation => [conversation.supplierId, conversation]));
+  const localActions = Boolean(data.capabilities?.browserMutationsEnabled);
+  const outreachCapability = data.capabilities?.outreach || {};
+
   $("#conversation-ready-count").textContent = qualified.length;
   $("#conversation-active-count").textContent = data.summary.negotiationsActive;
-  $("#rfq-targets").innerHTML = qualified.length
-    ? qualified.map(candidate => `<div class="factor"><span>${escapeHtml(candidate.name)}</span><b>${money2(candidate.preliminaryUnitPrice)} · ${days(candidate.leadTimeDays)} · MOQ ${number(candidate.moq)}</b></div>`).join("")
-    : '<div class="empty-state">No qualified supplier is ready for outreach yet.</div>';
+
+  const contractPanel = $("#view-conversations .contract-panel");
+  if (contractPanel) {
+    contractPanel.innerHTML = `<div><p class="eyebrow">PERSISTENT RFQ WORKFLOW</p><h2>${qualified.length} qualified supplier${qualified.length === 1 ? "" : "s"} can enter RFQ.</h2><p>Vendor Scout prepares a non-binding request, persists the thread before delivery, sends through an idempotent transport, and stores supplier replies with provenance.</p></div><pre>RFQ draft → external delivery
+→ supplier reply → term extraction
+→ negotiate → compare → approval</pre>`;
+  }
+
+  let execution = $("#outreach-execution");
+  if (!execution) {
+    execution = document.createElement("article");
+    execution.id = "outreach-execution";
+    execution.className = "panel execution-panel outreach-execution";
+    contractPanel?.insertAdjacentElement("afterend", execution);
+  }
+  if (execution) {
+    const realProvider = outreachCapability.provider === "remote";
+    const status = realProvider
+      ? "External outreach provider configured. Delivery acceptance is counted as real supplier contact."
+      : outreachCapability.provider === "controlled-preview"
+        ? "Controlled preview is enabled. RFQs render and persist, but no email is sent and supplier-contact metrics remain unchanged."
+        : "No outreach transport is configured for this runtime.";
+    const controls = [];
+    if (localActions && ["contacting", "negotiating"].includes(currentMission.status)) {
+      controls.push('<button class="button light" data-outreach-action="prepare_outreach">Prepare RFQs</button>');
+      controls.push(`<button class="primary-button" data-outreach-action="send_outreach">${realProvider ? "Send RFQs" : "Preview RFQs"}</button>`);
+    }
+    execution.innerHTML = `<div><div class="provider-pill ${realProvider ? "live" : outreachCapability.provider === "controlled-preview" ? "fixture" : ""}">${realProvider ? "Live outreach transport" : outreachCapability.provider === "controlled-preview" ? "Controlled outreach preview" : "Outreach not configured"}</div><h3>Supplier outreach execution</h3><p>${escapeHtml(status)}</p></div><div class="execution-actions">${controls.join("")}</div>`;
+    $$('[data-outreach-action]').forEach(button => {
+      button.disabled = actionPending;
+      button.onclick = () => runMissionAction(button.dataset.outreachAction);
+    });
+  }
+
+  if (!qualified.length) {
+    $("#rfq-targets").innerHTML = '<div class="empty-state">No qualified supplier is ready for outreach yet.</div>';
+    return;
+  }
+
+  $("#rfq-targets").innerHTML = qualified.map(candidate => {
+    const conversation = bySupplier.get(candidate.id);
+    if (!conversation) {
+      const contact = candidate.contact?.email || candidate.contactEmail || "No verified contact";
+      return `<article class="panel conversation-card"><header><div><h3>${escapeHtml(candidate.name)}</h3><p>${escapeHtml(contact)}</p></div><span class="provider-pill">Not prepared</span></header><p>Qualified for outreach. No RFQ thread has been prepared yet.</p></article>`;
+    }
+
+    const outbound = outboundMessage(conversation);
+    const reply = latestReply(conversation);
+    const state = conversationStates[conversation.status] || { label: conversation.status.replaceAll("_", " "), tone: "" };
+    const delivery = outbound?.delivery || {};
+    const isPreview = delivery.provider === "controlled-preview" || conversation.status === "previewed";
+    const source = outbound?.contactSourceReference || candidate.contact?.sourceReference || candidate.contactSourceReference || candidate.source?.reference || "No contact provenance";
+    const deliveryLine = isPreview
+      ? "preview only · no external message was sent"
+      : delivery.provider === "remote-outreach"
+        ? `${delivery.status || "sent"}${delivery.externalMessageId ? ` · ${delivery.externalMessageId}` : ""}`
+        : delivery.error || "Delivery has not been attempted";
+    const replyMarkup = reply
+      ? `<div class="conversation-reply"><span>Supplier reply</span><p>${escapeHtml(reply.content)}</p><small>Source: ${escapeHtml(reply.sourceReference || "unknown")}</small></div>`
+      : '<div class="conversation-reply empty-reply">No supplier reply recorded yet</div>';
+    const rfqMarkup = outbound
+      ? `<details class="rfq-details"><summary>View RFQ</summary><div><b>${escapeHtml(outbound.subject)}</b><small>To: ${escapeHtml(outbound.to || "No verified contact")}</small><pre>${escapeHtml(outbound.content)}</pre></div></details>`
+      : "";
+
+    return `<article class="panel conversation-card"><header><div><h3>${escapeHtml(conversation.supplierName || candidate.name)}</h3><p>${escapeHtml(outbound?.to || "No verified contact")}</p></div><span class="provider-pill ${state.tone}">${escapeHtml(state.label)}</span></header><div class="conversation-meta"><span>Contact evidence<b>${escapeHtml(source)}</b></span><span>Delivery<b>${escapeHtml(deliveryLine)}</b></span></div>${rfqMarkup}${replyMarkup}</article>`;
+  }).join("");
 }
 
 function renderApprovals() {
@@ -299,6 +401,7 @@ async function runMissionAction(action) {
   if (!action || actionPending) return;
   actionPending = true;
   renderMissions();
+  renderConversations();
   try {
     const result = await api(`/api/missions/${encodeURIComponent(mission().id)}/actions`, {
       method: "POST",
@@ -314,6 +417,7 @@ async function runMissionAction(action) {
   } finally {
     actionPending = false;
     renderMissions();
+    renderConversations();
   }
 }
 
@@ -352,20 +456,25 @@ function showLanding() {
   window.scrollTo(0, 0);
 }
 
-$$('[data-view]').forEach(button => { button.onclick = () => navigate(button.dataset.view); });
+$$('[data-view]').forEach(button => { button.onclick = () => openView(button.dataset.view); });
 $$('[data-scroll]').forEach(element => { element.onclick = () => document.getElementById(element.dataset.scroll)?.scrollIntoView({ behavior: "smooth" }); });
-$$('.enter-app').forEach(element => { element.onclick = () => { history.pushState(null, "", "#app"); showApp("overview"); }; });
-$$('[data-open-view]').forEach(element => { element.onclick = () => { history.pushState(null, "", "#app"); showApp(element.dataset.openView); }; });
+$$('.enter-app').forEach(element => { element.onclick = () => openView("overview"); });
+$$('[data-open-view]').forEach(element => { element.onclick = () => openView(element.dataset.openView); });
 $(".back-home").onclick = () => { history.pushState(null, "", "#home"); showLanding(); };
 $("#mobile-menu").onclick = () => { const open = $("#mobile-links").classList.toggle("open"); $("#mobile-menu").setAttribute("aria-expanded", open); };
 $("#mission-next-action").onclick = event => runMissionAction(event.currentTarget.dataset.action);
 $("#mission-replay").onclick = replayMission;
-window.addEventListener("hashchange", () => location.hash === "#app" ? showApp("overview") : location.hash === "#home" && showLanding());
+window.addEventListener("hashchange", () => {
+  const view = hashView();
+  if (view) showApp(view);
+  else if (location.hash === "#home") showLanding();
+});
 
 api("/api/dashboard").then(value => {
   data = value;
   render();
-  if (location.hash === "#app") showApp("overview");
+  const view = hashView();
+  if (view) showApp(view);
 }).catch(error => {
   showWorkspaceError(error.message);
   toast(error.message);
