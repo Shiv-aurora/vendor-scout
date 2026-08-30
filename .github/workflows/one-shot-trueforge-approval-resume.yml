@@ -1,0 +1,26 @@
+name: One-shot TrueForge approval resume
+
+on:
+  push:
+    branches: ["build/final-product-copy2"]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python scripts/add_trueforge_approval_resume.py
+      - run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f scripts/add_trueforge_approval_resume.py .github/workflows/one-shot-trueforge-approval-resume.yml
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m 'support audited TrueForge approval resume flow'
+          git push origin HEAD:build/final-product-copy2
