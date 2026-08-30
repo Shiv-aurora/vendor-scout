@@ -18,7 +18,8 @@ function readyConversation({
   shippingCost = 500,
   sampleAvailable = true,
   samplePrice = 180,
-  technicalConfirmed = true
+  technicalConfirmed = true,
+  requireReady = true
 }) {
   candidate.contact = { email: `${candidate.id}@supplier.test`, sourceReference: `https://${candidate.id}.test/contact` };
   const conversation = createRfqConversation(mission, candidate, "2026-08-29T10:00:00.000Z");
@@ -42,8 +43,10 @@ function readyConversation({
     technicalConfirmed
   }, { extractedAt: "2026-08-29T11:05:00.000Z" });
   const prepared = prepareCounter(mission, candidate, conversation);
-  assert.equal(prepared.evaluation.status, "ready_for_comparison");
-  assert.equal(conversation.status, "offer_ready");
+  if (requireReady) {
+    assert.equal(prepared.evaluation.status, "ready_for_comparison");
+    assert.equal(conversation.status, "offer_ready");
+  }
   return conversation;
 }
 
@@ -86,9 +89,9 @@ test("quote normalization uses the applicable quantity tier and complete landed 
 test("MOQ overbuy is explicit and changes known production cost", () => {
   const { mission, candidates } = fixture();
   const candidate = candidates[0];
-  const conversation = readyConversation({ mission, candidate, source: "overbuy", moq: 700, unitPrice: 300 });
-  // Mark as ready manually because Phase 7 correctly counters MOQ > requested quantity;
-  // this isolates Phase 8's defensive normalization behavior for imported/finalized offers.
+  const conversation = readyConversation({ mission, candidate, source: "overbuy", moq: 700, unitPrice: 300, requireReady: false });
+  assert.equal(conversation.negotiation.latestEvaluation.status, "counter_required", "Phase 7 should normally counter this MOQ");
+  // Defensive Phase 8 normalization still accounts for overbuy if an imported/finalized offer is marked ready downstream.
   conversation.status = "offer_ready";
   conversation.negotiation.latestEvaluation.status = "ready_for_comparison";
   const quote = normalizeQuote(mission, candidate, conversation);
