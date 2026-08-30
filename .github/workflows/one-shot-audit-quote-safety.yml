@@ -44,7 +44,7 @@ jobs:
 
           docs = Path('docs/QUOTES.md')
           text = docs.read_text()
-          marker = '## Recommendation boundary\n'
+          marker = '## Recommendation\n'
           insert = '''## Conservative comparability rule\n\nWhen at least one eligible offer has a complete landed cost, only complete-landed-cost offers receive a final rank. Offers with unknown shipping remain visible with `comparison.basis = incomplete-landed-cost`, but cannot win by appearing artificially cheaper.\n\nIf every otherwise-eligible offer lacks landed-cost inputs, Vendor Scout may produce a clearly `provisional` recommendation using known normalized cost. The missing fields remain attached as recommendation risks.\n\n'''
           if insert not in text:
               if marker not in text:
