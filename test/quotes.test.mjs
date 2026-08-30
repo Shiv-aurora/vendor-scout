@@ -136,8 +136,9 @@ test("analysis ranks complete offers with transparent score components and recom
   const { mission, candidates } = fixture();
   const a = candidates[0];
   const b = candidates[1];
+  // Equal current unit prices keep both offers currently negotiation-ready; ranking is then driven by the full normalized economics/risk/lead model.
   const conversationA = readyConversation({ mission, candidate: a, source: "a", unitPrice: 382, leadTimeDays: 18, shippingCost: 900, samplePrice: 180 });
-  const conversationB = readyConversation({ mission, candidate: b, source: "b", unitPrice: 388, leadTimeDays: 14, shippingCost: 1700, samplePrice: 220 });
+  const conversationB = readyConversation({ mission, candidate: b, source: "b", unitPrice: 382, leadTimeDays: 14, shippingCost: 1700, samplePrice: 220 });
 
   const analysis = analyzeQuotes(mission, [a, b], [conversationA, conversationB], { now: "2026-08-29T14:00:00.000Z" });
   assert.equal(analysis.quotes.length, 2);
@@ -160,8 +161,9 @@ test("incomplete quote can be ranked provisionally but recommendation exposes un
   const { mission, candidates } = fixture();
   const a = candidates[0];
   const b = candidates[1];
+  // Keep prices equal so current-offer revalidation does not invalidate either offer; isolate shipping completeness only.
   const incomplete = readyConversation({ mission, candidate: a, source: "incomplete", unitPrice: 370, shippingCost: null });
-  const complete = readyConversation({ mission, candidate: b, source: "complete", unitPrice: 390, shippingCost: 1000 });
+  const complete = readyConversation({ mission, candidate: b, source: "complete", unitPrice: 370, shippingCost: 1000 });
   const analysis = analyzeQuotes(mission, [a, b], [incomplete, complete]);
   const incompleteQuote = analysis.quotes.find(quote => quote.supplierId === a.id);
   assert.ok(incompleteQuote.score);
