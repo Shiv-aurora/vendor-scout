@@ -268,13 +268,14 @@ test("replayed supplier replies do not duplicate activity", async t => {
         supplierId: "supplier-heliomotion",
         content: "same",
         sourceReference: "gmail/same",
-        providerMessageId: "same",
         receivedAt: "2026-08-29T16:00:00Z"
       }
     }
   };
   await postJson(`${runtime.baseUrl}/mcp`, { ...reply, id: 5 });
-  await postJson(`${runtime.baseUrl}/mcp`, { ...reply, id: 6 });
+  const whitespaceReplay = structuredClone(reply);
+  whitespaceReplay.params.arguments.sourceReference = "  gmail/same  ";
+  await postJson(`${runtime.baseUrl}/mcp`, { ...whitespaceReplay, id: 6 });
   const mission = await fetch(`${runtime.baseUrl}/api/missions/mission-lidar-500`).then(r => r.json());
   assert.equal(
     mission.activity.filter(item => item.title.includes("Supplier reply recorded from HelioMotion Optics")).length,
@@ -302,10 +303,10 @@ test("tier pricing is evaluated while foreign currency is explicitly deferred to
 
   offer = recordOfferTerms(conversation, {
     sourceReference: "gmail/message/offer",
-    unitPrice: null,
+    unitPrice: 410,
     currency: "USD",
     quantityTiers: [
-      { minQuantity: 100, unitPrice: 410 },
+      { minQuantity: 100, unitPrice: 405 },
       { minQuantity: 500, unitPrice: 385 }
     ],
     moq: 100,
@@ -389,4 +390,64 @@ test("direct counter send persists negotiation readiness when no counter is need
   assert.equal(result.response.status, 200);
   assert.equal(result.payload.mission.execution.negotiationReady, true);
   assert.equal(result.payload.conversations.find(item => item.supplierId === "supplier-heliomotion").status, "offer_ready");
+});
+
+
+test("MCP candidate values honor the published schema", async () => {
+  let calls = 0;
+  const base = {
+    name: "Valid Supplier",
+    country: "US",
+    region: "North America",
+    type: "Manufacturer",
+    confidence: 0.9,
+    specMatch: 0.9,
+    sourceReference: "https://supplier.test/evidence"
+  };
+  const context = { recordSuppliers: async () => { calls += 1; return {}; } };
+  for (const badCandidate of [
+    { ...base, website: 42 },
+    { ...base, currency: "X" },
+    { ...base, confidence: 2 },
+    { ...base, preliminaryUnitPrice: -1 },
+    { ...base, sourceReference: "   " }
+  ]) {
+    const result = await handleMcpMessage({
+      jsonrpc: "2.0",
+      id: 90 + calls,
+      method: "tools/call",
+      params: { name: "vendor_scout_record_supplier_candidates", arguments: { missionId: "m", candidates: [badCandidate] } }
+    }, context);
+    assert.equal(result.result.isError, true);
+  }
+  assert.equal(calls, 0);
+});
+
+test("declared oversized provider bodies are rejected before parsing", async t => {
+  const server = http.createServer((req, res) => {
+    const trueForge = req.url.includes("/api/v1/sessions");
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Content-Length": String(trueForge ? 2_000_001 : 300_000)
+    });
+    res.end("{}");
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const { port } = server.address();
+
+  const client = new TrueForgeClient({ baseUrl: `http://127.0.0.1:${port}`, agentName: "vendor-scout" });
+  await assert.rejects(client.createSession(), /TrueForge response is too large/);
+
+  const { mission, candidate, conversation } = liveFixture();
+  await assert.rejects(
+    deliverRfq(
+      { mission, candidate, conversation, message: outboundRfqMessage(conversation) },
+      { url: `http://127.0.0.1:${port}/outreach`, allowControlledPreview: false }
+    ),
+    /Outreach provider response is too large/
+  );
 });
