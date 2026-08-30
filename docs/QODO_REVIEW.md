@@ -1,86 +1,151 @@
-# Qodo Review Focus
+# Qodo Review Evidence
 
 Vendor Scout is being built for a hackathon that requires substantive pull-request changes to receive Qodo review before merge.
 
-## Current gate
+## Representative reviewed PR
 
-As of 2026-08-30, PR #5 has two `/agentic_review` command comments, all automated repository checks are green, and GitHub reports **zero submitted reviews**. A command comment is not treated as review evidence.
+PR #5 — `build/final-product-copy2 → build/autonomous-negotiation`
 
-The Qodo Merge Pro Marketplace page is available at <https://github.com/marketplace/qodo-merge-pro>, but installing/authorizing the GitHub App requires an authenticated interactive GitHub browser session. That authorization could not be completed from the logged-out browser available during the integration run.
+<https://github.com/Shiv-aurora/vendor-scout/pull/5>
 
-Required owner action: sign in to GitHub in the browser, install Qodo Merge Pro for `Shiv-aurora/vendor-scout` (or the owning account with this repository selected), then trigger a fresh review on <https://github.com/Shiv-aurora/vendor-scout/pull/5>. Do not treat the existing command comments as evidence.
+Qodo submitted a real review on 2026-08-30 and identified six material findings. None were dismissed as noise; all six were fixed and regression-tested.
 
-Do not merge the remaining substantive PR chain until Qodo is correctly authorized for the repository and an actual review exists.
+Qodo review summary:
 
-Historical note: PR #1 was merged before Qodo review evidence existed. This cannot be retroactively corrected and should not be misrepresented.
+<https://github.com/Shiv-aurora/vendor-scout/pull/5#issuecomment-5466842962>
 
-## Final representative PR review focus
+The Qodo summary was subsequently re-evaluated against the remediation and now reports:
 
-The final Phases 8–15 PR should be reviewed especially for:
+- `Bugs (0)`
+- `Rule violations (0)`
+- all six original findings marked `Resolved`
 
-### Procurement correctness
+The clean remediation head is:
 
-- quote extraction stays anchored to persisted supplier replies
-- unknown shipping / price / MOQ / lead time / FX is not silently converted to zero
-- quantity tiers and MOQ overbuy are calculated correctly
-- cross-currency conversion requires source provenance
-- a stale `offer_ready` state is revalidated against the current competing offer set
-- incomplete landed-cost offers remain visible but do not beat complete landed-cost offers merely because unknown shipping makes them look cheap
-- scoring/ranking and recommendation reasons match persisted evidence
+`e191c917f347c99e4bfd7612eca822191d38f578`
 
-### Idempotency / partial failures
+Full CI run `33294895719` passed **73/73 tests**, and the decision, outreach, and negotiation browser workflows also passed on that exact head.
 
-- RFQ and counter retries do not duplicate externally accepted messages
-- quote re-analysis does not duplicate comparison/approval events when evidence is unchanged
-- changed quote evidence cannot silently replace a packet already under human review
-- sample execution persists intent before external I/O and is safe to replay after completion
-- remote order transport uses the stable idempotency key
+## Findings and remediation
 
-### Human commitment boundary
+### 1. MOQ selected the wrong quantity tier — High / correctness
 
-- quote analysis can create a recommendation/approval packet but cannot spend money or accept terms
-- `Approve sample` records a business decision only; it does not create a sample order
-- `Keep negotiating` returns the mission to negotiation without a commitment
-- `Reject` closes the recommendation without a commitment
-- sample execution requires the mission to be `approved` and a matching persisted approved decision
-- approved quote/sample must still exist and sample price must remain within the mission budget
+Qodo found that quote normalization selected the pricing tier using the requested mission quantity before computing the larger MOQ-constrained purchase quantity.
 
-### TrueForge tool safety
+Fix:
 
-- MCP exposes exactly one intentional consequential action: `vendor_scout_execute_sample_order`
-- that tool is marked `destructiveHint: true`, `openWorldHint: true`, `idempotentHint: true`
-- docs/saved-agent configuration put that exact tool in `require_approval_for_tools`
-- there is no generic `accept_offer`, `accept_terms`, `purchase`, or arbitrary `place_order` tool
-- Vendor Scout server-side approval enforcement remains independent of the TrueForge approval UI
+- compute `orderQuantity` first
+- select the effective quantity tier using the actual purchased quantity
 
-### Provenance / truthfulness
+Regression:
 
-- controlled discovery/outreach/replies/sample actions are clearly labeled as controlled/simulated
-- `.example` contacts cannot leak to a real outreach provider
-- controlled preview never increments real supplier-contact claims
-- controlled sample action never claims external spend or a real provider order ID
-- live provider records preserve provider IDs/source references
+`MOQ-constrained order quantity selects the tier actually purchased`
 
-### Security / production defaults
+### 2. Pre-shipping savings ignored MOQ overbuy — High / correctness
 
-- mutation/MCP auth remains default-deny in production
-- fixture discovery, outreach preview, sample preview, and dev reset remain disabled by default in production
-- remote providers require HTTPS in production except loopback-local test/runtime cases
-- credentials are never returned to the browser/dashboard
-- state migrations preserve existing mission data and unknown versions fail closed
+Qodo found that the fallback savings calculation subtracted price × requested quantity, even when MOQ required buying excess units.
 
-### UI / judge clarity
+Fix:
 
-- the decision packet shows enough evidence to make a fast decision
-- pending / business-approved-but-still-gated / completed-simulated states cannot be confused
-- incomplete/unrankable quote evidence remains visible
-- desktop/mobile rendering does not hide or clip the human decision controls
+- compute pre-shipping savings from the MOQ-aware `itemSubtotalBase`
 
-## Review follow-up requirement
+Regression:
 
-For every material Qodo finding:
+`pre-shipping savings includes mandatory MOQ overbuy when shipping is unknown`
 
-1. Fix it, or explicitly dismiss it with a concrete technical rationale.
-2. Re-run the relevant tests/browser workflow.
-3. Request follow-up Qodo review when required by the hackathon rules.
-4. Record the representative reviewed PR under the README heading `## Qodo Code Review Evidence` before submission.
+### 3. Non-sample approval could dead-end the mission — High / correctness
+
+Qodo found that a recommendation without an orderable in-budget sample could still be approved, moving the mission to `approved` even though no executable action existed.
+
+Fix:
+
+- approval packets mark non-orderable actions non-executable
+- domain and server reject `approve` unless the action is an in-budget `order_sample`
+- UI hides `Approve sample` when no executable sample action exists
+- `Keep negotiating` and `Reject` remain available
+
+Regression:
+
+`non-orderable recommendation cannot be approved into a dead-end state`
+
+### 4. Sample-provider response limit buffered the whole body first — Medium / reliability
+
+Qodo found that `response.text()` could fully allocate an unbounded chunked provider response before the nominal size check.
+
+Fix:
+
+- read the response stream incrementally
+- count bytes as chunks arrive
+- cancel immediately after crossing `MAX_RESPONSE_BYTES`
+- parse only the bounded buffer
+
+Regression:
+
+`remote sample provider response is bounded while streaming`
+
+### 5. Sample-price changes could bypass fresh approval — High / security
+
+Qodo found that raw sample price/availability were not sufficiently represented in change detection, and execution could otherwise read a later mutable quote amount after a human had approved a different amount.
+
+Fix:
+
+- quote-analysis identity now includes material raw quote evidence, including `sample`
+- the human-approved action snapshots sample spend and currency
+- execution refuses quote price/currency drift with `fresh approval required`
+- the submitted order uses the approved spend snapshot, not mutable quote state
+
+Regression:
+
+`sample execution refuses price drift after human approval`
+
+### 6. Returned approval could block a later approval cycle — High / correctness
+
+Qodo found that a stable approval ID could cause a `returned_to_negotiation` decision to be reused instead of creating a new pending human decision.
+
+Fix:
+
+- idempotency reuses only a currently `pending` matching packet
+- approval records carry a decision-cycle number
+- subsequent decision cycles get distinct approval IDs while preserving earlier decisions
+
+Regression:
+
+`keep negotiating creates a fresh approval cycle and reject never creates a sample order`
+
+The regression verifies a second pending packet with `cycle === 2`.
+
+## Follow-up review
+
+After the clean remediation passed all checks, each Qodo thread received a specific response linking the implementation/test evidence.
+
+A new `/agentic_review` request was posted on PR #5 after remediation:
+
+<https://github.com/Shiv-aurora/vendor-scout/pull/5#issuecomment-5466942032>
+
+Qodo acknowledged the request, and its live review summary already shows all six findings resolved with zero remaining bugs. Do not invent or claim an additional submitted Qodo review object until GitHub actually shows one.
+
+## Merge gate
+
+PR #5 remains intentionally unmerged.
+
+Before merging the remaining substantive PR chain:
+
+1. Preserve the green remediation state.
+2. Confirm the follow-up Qodo run has finished on the final PR head.
+3. Address any new material findings if Qodo creates them.
+4. Keep the Qodo review summary and remediation evidence linked from the README.
+
+Historical note: PR #1 was merged before Qodo review evidence existed. This cannot be retroactively corrected and must not be represented as reviewed.
+
+## Final review focus
+
+Any follow-up review should continue to prioritize:
+
+- quote / landed-cost correctness
+- MOQ / quantity-tier accounting
+- immutable human-approved spend evidence
+- approval-cycle idempotency
+- sample-order provider bounds and idempotency
+- production default-deny behavior
+- controlled-vs-live truth boundaries
+- the TrueForge destructive-tool approval boundary
