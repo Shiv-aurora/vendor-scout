@@ -206,6 +206,12 @@ function requireStatus(mission, expected, action) {
   }
 }
 
+function requireOneOfStatuses(mission, allowed, action) {
+  if (!allowed.includes(mission.status)) {
+    throw httpError(409, `Cannot ${action} while mission status is ${mission.status}; expected ${allowed.join(" or ")}`);
+  }
+}
+
 function requireTrueForgeConfigured() {
   if (!trueForge.configured) throw httpError(503, "TrueForge is not configured; set TRUEFORGE_BASE_URL and TRUEFORGE_AGENT_NAME");
 }
@@ -366,11 +372,11 @@ async function executeMissionAction(id, action) {
     const review = evaluated.filter(candidate => candidate.status === "needs_review").length;
     addActivity(id, "qualify", "Qualification completed", `${qualified} qualified · ${review} need review · ${rejected} rejected. Qualified suppliers are ready for outreach.`);
   } else if (action === "prepare_outreach") {
-    requireStatus(mission, "contacting", "prepare outreach");
+    requireOneOfStatuses(mission, ["contacting", "negotiating"], "prepare outreach");
     const result = prepareRfqConversations(mission);
     if (result.created) addActivity(id, "contact", `${result.created} RFQ draft${result.created === 1 ? "" : "s"} prepared`, "RFQs are non-binding and request the complete commercial and technical quote packet.");
   } else if (action === "send_outreach") {
-    requireStatus(mission, "contacting", "send outreach");
+    requireOneOfStatuses(mission, ["contacting", "negotiating"], "send outreach");
     return { mission: await sendPreparedOutreach(mission), dashboard: dashboard() };
   } else if (action === "connect_trueforge") {
     requireTrueForgeConfigured();
@@ -490,8 +496,8 @@ async function mcpPrepareOutreach(id) {
   return serializeMutation(async () => {
     const mission = state.missions.find(item => item.id === id);
     if (!mission) throw httpError(404, "Sourcing mission not found");
-    if (mission.status !== "contacting") {
-      if (["negotiating", "comparing", "awaiting_approval", "approved", "completed"].includes(mission.status)) return missionSnapshot(id);
+    if (!["contacting", "negotiating"].includes(mission.status)) {
+      if (["comparing", "awaiting_approval", "approved", "completed"].includes(mission.status)) return missionSnapshot(id);
       throw httpError(409, `RFQ preparation requires qualified suppliers; mission status is ${mission.status}`);
     }
     const result = prepareRfqConversations(mission);
@@ -505,9 +511,9 @@ async function mcpSendOutreach(id) {
   return serializeMutation(async () => {
     const mission = state.missions.find(item => item.id === id);
     if (!mission) throw httpError(404, "Sourcing mission not found");
-    if (mission.status === "contacting") return sendPreparedOutreach(mission);
-    if (["negotiating", "comparing", "awaiting_approval", "approved", "completed"].includes(mission.status)) return missionSnapshot(id);
-    throw httpError(409, `Supplier outreach requires the contacting stage; mission status is ${mission.status}`);
+    if (["contacting", "negotiating"].includes(mission.status)) return sendPreparedOutreach(mission);
+    if (["comparing", "awaiting_approval", "approved", "completed"].includes(mission.status)) return missionSnapshot(id);
+    throw httpError(409, `Supplier outreach requires the contacting or negotiating stage; mission status is ${mission.status}`);
   });
 }
 
