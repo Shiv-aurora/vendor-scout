@@ -1,151 +1,108 @@
 # Qodo Review Evidence
 
-Vendor Scout is being built for a hackathon that requires substantive pull-request changes to receive Qodo review before merge.
+Vendor Scout is built for the TrueForge Hackathon, where substantive pull-request changes are expected to receive Qodo review before merge.
 
-## Representative reviewed PR
+## Representative integration PR
 
-PR #5 — `build/final-product-copy2 → build/autonomous-negotiation`
+PR #5 — `build/final-product-copy2 → main`
 
 <https://github.com/Shiv-aurora/vendor-scout/pull/5>
 
+PR #5 is the cumulative integration PR. It supersedes the earlier stacked PRs #2–#4 so Qodo can evaluate the complete product against `main` rather than reviewing only the final phase in isolation.
+
+## Review history
+
+### Initial PR #5 review
+
 Qodo submitted a real review on 2026-08-30 and identified six material findings. None were dismissed as noise; all six were fixed and regression-tested.
 
-Qodo review summary:
+The six findings were:
 
-<https://github.com/Shiv-aurora/vendor-scout/pull/5#issuecomment-5466842962>
+1. MOQ-constrained orders selected a quantity tier using requested quantity instead of actual purchased quantity.
+2. Pre-shipping savings could ignore mandatory MOQ overbuy.
+3. A recommendation without an orderable in-budget sample could be approved into a dead-end state.
+4. The sample-order provider response limit buffered the full response before enforcing its byte cap.
+5. Changed sample price/availability could bypass fresh human approval semantics.
+6. A returned approval could block creation of a later pending approval cycle.
 
-The Qodo summary was subsequently re-evaluated against the remediation and now reports:
+Remediation added MOQ-aware tier/savings accounting, non-executable approval enforcement, incremental response bounds, immutable approved-spend checks, and distinct approval decision cycles.
 
-- `Bugs (0)`
-- `Rule violations (0)`
-- all six original findings marked `Resolved`
+Qodo subsequently marked all six original threads resolved and its live summary reported `Bugs (0)` for that review state.
 
-The clean remediation head is:
+### Findings carried forward from PRs #2–#4
 
-`e191c917f347c99e4bfd7612eca822191d38f578`
+The earlier stacked PRs also contained Qodo findings. Before consolidating the stack, those findings were audited against the final architecture rather than mechanically dismissed.
 
-Full CI run `33294895719` passed **73/73 tests**, and the decision, outreach, and negotiation browser workflows also passed on that exact head.
+Valid issues were fixed on the cumulative branch, including:
 
-## Findings and remediation
+- failed researched-supplier ingestion advancing mission state before validation;
+- MCP protocol/id-less request safety and candidate schema enforcement;
+- bounded TrueForge response handling;
+- explicit outreach-provider success semantics and bounded provider bodies;
+- `.example.` fixture-address protection;
+- supplier reply timestamp normalization and replay-safe activity;
+- quantity-tier-aware negotiation pricing;
+- persisted negotiation readiness when no counter is required;
+- stale unsent counter invalidation when extraction/evaluation changes.
 
-### 1. MOQ selected the wrong quantity tier — High / correctness
+One older phase-local concern assumed foreign-currency offers had no conversion path. The final architecture intentionally allows those offers into comparison while refusing to rank them until a positive provenance-backed FX rate is supplied. That later architecture addresses the risk without forcing supplier renegotiation solely because the quote currency differs.
 
-Qodo found that quote normalization selected the pricing tier using the requested mission quantity before computing the larger MOQ-constrained purchase quantity.
+Focused regressions for this carried-forward review work live in `test/qodo-stack-regressions.test.mjs`.
 
-Fix:
+### Fresh cumulative review against `main`
 
-- compute `orderQuantity` first
-- select the effective quantity tier using the actual purchased quantity
+After PR #5 was retargeted to `main`, Qodo reviewed the full integrated diff and found four additional issues:
 
-Regression:
+1. **Tier-price precedence — High / correctness.** Negotiation preferred standalone `unitPrice` even when an applicable quantity tier existed.
+2. **Candidate schema enforcement — Medium / correctness.** Runtime MCP validation rejected unknown fields but did not fully enforce the published types/ranges of known candidate fields.
+3. **Reply replay normalization — Medium / reliability.** Supplier-reply IDs hashed the untrimmed source reference while persisted provenance was trimmed.
+4. **Declared oversized bodies — Medium / reliability.** The fast `Content-Length` rejection path did not cancel the unread TrueForge/outreach response body before throwing.
 
-`MOQ-constrained order quantity selects the tier actually purchased`
+All four were fixed on integrated head:
 
-### 2. Pre-shipping savings ignored MOQ overbuy — High / correctness
+`27e18af2a32d42164c8c6639e9af2453abe89969`
 
-Qodo found that the fallback savings calculation subtracted price × requested quantity, even when MOQ required buying excess units.
+Remediation:
 
-Fix:
+- negotiation now selects the highest applicable quantity tier first, then falls back to standalone `unitPrice`;
+- MCP candidate validation now enforces required strings, nullable strings, numeric ranges/non-negativity, and three-letter currency codes before persistence;
+- supplier reply provenance is normalized once before both stable-ID hashing and persistence;
+- both TrueForge and outreach readers cancel the response body before throwing on an oversized declared `Content-Length`, while preserving incremental overflow cancellation.
 
-- compute pre-shipping savings from the MOQ-aware `itemSubtotalBase`
+Each of the four Qodo threads has a specific reply describing its code fix and regression evidence.
 
-Regression:
+## Current validation
 
-`pre-shipping savings includes mandatory MOQ overbuy when shipping is unknown`
+The integrated remediation was applied through a fail-closed GitHub Actions job that ran the complete test suite before it was permitted to commit.
 
-### 3. Non-sample approval could dead-end the mission — High / correctness
+Guarded workflow:
 
-Qodo found that a recommendation without an orderable in-budget sample could still be approved, moving the mission to `approved` even though no executable action existed.
+<https://github.com/Shiv-aurora/vendor-scout/actions/runs/33298301853>
 
-Fix:
+Validation on the patched tree:
 
-- approval packets mark non-orderable actions non-executable
-- domain and server reject `approve` unless the action is an in-budget `order_sample`
-- UI hides `Approve sample` when no executable sample action exists
-- `Keep negotiating` and `Reject` remain available
+- `npm ci`: zero vulnerabilities
+- `npm run check`: **86/86 tests passed, 0 failed**
+- no temporary follow-up workflow/script/trigger files remained in the remediation commit
 
-Regression:
+The added/strengthened regressions include:
 
-`non-orderable recommendation cannot be approved into a dead-end state`
+- tier pricing takes precedence when both standalone and tier prices are supplied;
+- invalid known MCP candidate fields are rejected before persistence;
+- reply replay remains idempotent when source-reference whitespace changes;
+- declared oversized TrueForge and outreach provider responses are cancelled/rejected before parsing.
 
-### 4. Sample-provider response limit buffered the whole body first — Medium / reliability
-
-Qodo found that `response.text()` could fully allocate an unbounded chunked provider response before the nominal size check.
-
-Fix:
-
-- read the response stream incrementally
-- count bytes as chunks arrive
-- cancel immediately after crossing `MAX_RESPONSE_BYTES`
-- parse only the bounded buffer
-
-Regression:
-
-`remote sample provider response is bounded while streaming`
-
-### 5. Sample-price changes could bypass fresh approval — High / security
-
-Qodo found that raw sample price/availability were not sufficiently represented in change detection, and execution could otherwise read a later mutable quote amount after a human had approved a different amount.
-
-Fix:
-
-- quote-analysis identity now includes material raw quote evidence, including `sample`
-- the human-approved action snapshots sample spend and currency
-- execution refuses quote price/currency drift with `fresh approval required`
-- the submitted order uses the approved spend snapshot, not mutable quote state
-
-Regression:
-
-`sample execution refuses price drift after human approval`
-
-### 6. Returned approval could block a later approval cycle — High / correctness
-
-Qodo found that a stable approval ID could cause a `returned_to_negotiation` decision to be reused instead of creating a new pending human decision.
-
-Fix:
-
-- idempotency reuses only a currently `pending` matching packet
-- approval records carry a decision-cycle number
-- subsequent decision cycles get distinct approval IDs while preserving earlier decisions
-
-Regression:
-
-`keep negotiating creates a fresh approval cycle and reject never creates a sample order`
-
-The regression verifies a second pending packet with `cycle === 2`.
-
-## Follow-up review
-
-After the clean remediation passed all checks, each Qodo thread received a specific response linking the implementation/test evidence.
-
-A new `/agentic_review` request was posted on PR #5 after remediation:
-
-<https://github.com/Shiv-aurora/vendor-scout/pull/5#issuecomment-5466942032>
-
-Qodo acknowledged the request, and its live review summary already shows all six findings resolved with zero remaining bugs. Do not invent or claim an additional submitted Qodo review object until GitHub actually shows one.
+The remediation commit was pushed by GitHub Actions, so the ordinary PR workflows require a subsequent user-authored checkpoint to run on the final exact head. This documentation update provides that checkpoint; the normal CI/browser workflows and a fresh Qodo follow-up must be green before merge.
 
 ## Merge gate
 
-PR #5 remains intentionally unmerged.
+PR #5 remains unmerged until all of the following are true:
 
-Before merging the remaining substantive PR chain:
+1. normal Vendor Scout CI plus decision/outreach/negotiation browser workflows pass on the final user-authored head;
+2. Qodo re-evaluates the cumulative `main`-based PR after the four integrated fixes;
+3. no valid unresolved Qodo finding remains;
+4. the README points to the final reviewed PR evidence truthfully.
 
-1. Preserve the green remediation state.
-2. Confirm the follow-up Qodo run has finished on the final PR head.
-3. Address any new material findings if Qodo creates them.
-4. Keep the Qodo review summary and remediation evidence linked from the README.
+After #5 is clean, PRs #2–#4 should be closed as superseded by the cumulative PR rather than merged individually. PR #5 should then be merged into `main`, preserving the reviewed integration history.
 
 Historical note: PR #1 was merged before Qodo review evidence existed. This cannot be retroactively corrected and must not be represented as reviewed.
-
-## Final review focus
-
-Any follow-up review should continue to prioritize:
-
-- quote / landed-cost correctness
-- MOQ / quantity-tier accounting
-- immutable human-approved spend evidence
-- approval-cycle idempotency
-- sample-order provider bounds and idempotency
-- production default-deny behavior
-- controlled-vs-live truth boundaries
-- the TrueForge destructive-tool approval boundary
