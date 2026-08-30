@@ -8,9 +8,11 @@ import { discoverSuppliers, normalizeDiscoveredCandidates } from "./lib/discover
 import { qualifySupplier, transitionMission, validateMission } from "./lib/domain.mjs";
 import { handleMcpMessage, PROCUREMENT_MCP_TOOLS } from "./lib/mcp.mjs";
 import { migrateState } from "./lib/migrations.mjs";
+import { latestOffer, markCounterAccepted, prepareCounter as prepareNegotiationCounter, recordOfferTerms } from "./lib/negotiation.mjs";
 import {
   createRfqConversation,
   deliverRfq,
+  deliverSupplierMessage,
   isExternallyAccepted,
   outboundRfqMessage,
   recordSupplierReply
@@ -140,7 +142,7 @@ function capabilities() {
 function dashboard() {
   const activeMissions = state.missions.filter(mission => !["completed", "rejected"].includes(mission.status));
   const qualified = state.supplierCandidates.filter(candidate => candidate.status === "qualified");
-  const negotiationsActive = state.conversations.filter(conversation => ["supplier_replied", "negotiating"].includes(conversation.status)).length;
+  const negotiationsActive = state.conversations.filter(conversation => ["supplier_replied", "negotiating", "counter_draft", "counter_sending", "counter_sent", "counter_previewed", "counter_delivery_failed"].includes(conversation.status)).length;
   const approvalsWaiting = state.approvals.filter(approval => approval.status === "pending").length;
   const projectedSavings = Math.max(0, ...qualified.map(candidate => candidate.projectedSavings || 0));
   const contacted = new Set(state.conversations.filter(conversationHasExternalContact).map(conversation => conversation.supplierId));
@@ -312,6 +314,102 @@ async function recordMissionSupplierReply(missionId, supplierId, payload) {
     mission.updatedAt = new Date().toISOString();
   }
   addActivity(missionId, "conversation", `Supplier reply recorded from ${conversation.supplierName}`, "The reply was persisted with source provenance for later term extraction and negotiation.");
+  await persist();
+  return missionSnapshot(missionId);
+}
+
+function competitorOffersFor(missionId, excludedSupplierId) {
+  return state.conversations
+    .filter(conversation => conversation.missionId === missionId && conversation.supplierId !== excludedSupplierId)
+    .map(conversation => latestOffer(conversation))
+    .filter(Boolean);
+}
+
+function negotiationEntities(missionId, supplierId) {
+  const mission = state.missions.find(item => item.id === missionId);
+  if (!mission) throw httpError(404, "Sourcing mission not found");
+  const candidate = state.supplierCandidates.find(item => item.missionId === missionId && item.id === supplierId);
+  if (!candidate) throw httpError(404, "Supplier candidate not found");
+  const conversation = state.conversations.find(item => item.missionId === missionId && item.supplierId === supplierId);
+  if (!conversation) throw httpError(404, "Supplier conversation not found");
+  return { mission, candidate, conversation };
+}
+
+async function recordMissionOfferTerms(missionId, supplierId, payload) {
+  const { mission, conversation } = negotiationEntities(missionId, supplierId);
+  requireStatus(mission, "negotiating", "record supplier offer terms");
+  const offer = recordOfferTerms(conversation, payload);
+  addActivity(missionId, "negotiation", `Offer terms recorded from ${conversation.supplierName}`, `Structured terms were anchored to supplier reply ${offer.sourceReference}. Unknown terms remain unverified.`);
+  await persist();
+  return missionSnapshot(missionId);
+}
+
+async function prepareMissionCounter(missionId, supplierId) {
+  const { mission, candidate, conversation } = negotiationEntities(missionId, supplierId);
+  requireStatus(mission, "negotiating", "prepare negotiation counter");
+  const result = prepareNegotiationCounter(mission, candidate, conversation, competitorOffersFor(missionId, supplierId));
+  mission.execution = {
+    ...(mission.execution || {}),
+    negotiationReady: state.conversations.some(item => item.missionId === missionId && item.status === "offer_ready") || result.evaluation.status === "ready_for_comparison",
+    lastNegotiationAt: new Date().toISOString()
+  };
+  if (result.evaluation.status === "ready_for_comparison") {
+    addActivity(missionId, "negotiation", `${conversation.supplierName} offer is ready for comparison`, "No counter was generated because the persisted offer has no unresolved negotiation gap. Vendor Scout has not accepted the terms.");
+  } else if (result.evaluation.status === "reject_recommended") {
+    addActivity(missionId, "negotiation", `${conversation.supplierName} requires human judgment`, "The supplier explicitly failed a critical technical confirmation, so autonomous countering stopped.");
+  } else if (result.message) {
+    addActivity(missionId, "negotiation", `Counter prepared for ${conversation.supplierName}`, `${result.evaluation.gaps.length} explicit gap${result.evaluation.gaps.length === 1 ? "" : "s"} · ${result.evaluation.missingFields.length} missing field${result.evaluation.missingFields.length === 1 ? "" : "s"}.`);
+  }
+  await persist();
+  return missionSnapshot(missionId);
+}
+
+async function sendPreparedCounter(missionId, supplierId) {
+  const { mission, candidate, conversation } = negotiationEntities(missionId, supplierId);
+  requireStatus(mission, "negotiating", "send negotiation counter");
+  const prepared = prepareNegotiationCounter(mission, candidate, conversation, competitorOffersFor(missionId, supplierId));
+  const message = prepared.message;
+  if (!message) {
+    await persist();
+    return missionSnapshot(missionId);
+  }
+  if (isExternallyAccepted(message) || (message.delivery?.provider === "controlled-preview" && message.delivery?.status === "simulated")) {
+    await persist();
+    return missionSnapshot(missionId);
+  }
+
+  message.delivery.status = "sending";
+  message.delivery.attemptedAt = new Date().toISOString();
+  message.delivery.error = null;
+  conversation.status = "counter_sending";
+  conversation.updatedAt = message.delivery.attemptedAt;
+  await persist();
+
+  try {
+    const delivery = await deliverSupplierMessage({ mission, candidate, conversation, message }, { allowControlledPreview: allowOutreachPreview });
+    message.delivery = {
+      ...message.delivery,
+      status: delivery.status,
+      provider: delivery.provider,
+      externalMessageId: delivery.externalMessageId,
+      deliveredAt: delivery.deliveredAt,
+      error: null
+    };
+    if (delivery.simulated) {
+      conversation.status = "counter_previewed";
+      conversation.updatedAt = new Date().toISOString();
+      addActivity(missionId, "negotiation", `Counter previewed for ${conversation.supplierName}`, "Controlled preview persisted the exact counter but sent no external message.");
+    } else {
+      markCounterAccepted(conversation, message);
+      addActivity(missionId, "negotiation", `Counter sent to ${conversation.supplierName}`, `Negotiation round ${message.negotiationRound} was accepted by the configured outreach transport.`);
+    }
+  } catch (error) {
+    message.delivery.status = "failed";
+    message.delivery.error = String(error.message || error).slice(0, 2000);
+    conversation.status = "counter_delivery_failed";
+    conversation.updatedAt = new Date().toISOString();
+    addActivity(missionId, "negotiation", `Counter delivery failed for ${conversation.supplierName}`, message.delivery.error);
+  }
   await persist();
   return missionSnapshot(missionId);
 }
@@ -521,6 +619,18 @@ async function mcpRecordReply(id, supplierId, payload) {
   return serializeMutation(() => recordMissionSupplierReply(id, supplierId, payload));
 }
 
+async function mcpRecordOffer(id, supplierId, payload) {
+  return serializeMutation(() => recordMissionOfferTerms(id, supplierId, payload));
+}
+
+async function mcpPrepareCounter(id, supplierId) {
+  return serializeMutation(() => prepareMissionCounter(id, supplierId));
+}
+
+async function mcpSendCounter(id, supplierId) {
+  return serializeMutation(() => sendPreparedCounter(id, supplierId));
+}
+
 const mcpContext = {
   getMission: async id => missionSnapshot(id),
   discoverSuppliers: mcpDiscoverMission,
@@ -528,7 +638,10 @@ const mcpContext = {
   qualifySuppliers: mcpQualifyMission,
   prepareOutreach: mcpPrepareOutreach,
   sendOutreach: mcpSendOutreach,
-  recordReply: mcpRecordReply
+  recordReply: mcpRecordReply,
+  recordOffer: mcpRecordOffer,
+  prepareCounter: mcpPrepareCounter,
+  sendCounter: mcpSendCounter
 };
 
 export async function handleRequest(req, res) {
@@ -582,6 +695,30 @@ export async function handleRequest(req, res) {
       const supplierId = decodeURIComponent(replyMatch[2]);
       const body = await readJsonBody(req, 128 * 1024);
       const snapshot = await serializeMutation(() => recordMissionSupplierReply(missionId, supplierId, body));
+      return json(res, 200, snapshot);
+    }
+
+    const offerMatch = url.pathname.match(/^\/api\/missions\/([^/]+)\/suppliers\/([^/]+)\/offer$/);
+    if (offerMatch && req.method === "POST") {
+      if (!isAgentAuthorized(req)) return json(res, configuredAgentToken ? 401 : 503, { error: configuredAgentToken ? "Agent authorization required" : "Agent mutation API is disabled until VENDOR_SCOUT_AGENT_TOKEN is configured" });
+      const missionId = decodeURIComponent(offerMatch[1]);
+      const supplierId = decodeURIComponent(offerMatch[2]);
+      const body = await readJsonBody(req, 128 * 1024);
+      const snapshot = await serializeMutation(() => recordMissionOfferTerms(missionId, supplierId, body));
+      return json(res, 200, snapshot);
+    }
+
+    const counterMatch = url.pathname.match(/^\/api\/missions\/([^/]+)\/suppliers\/([^/]+)\/counter$/);
+    if (counterMatch && req.method === "POST") {
+      if (!isAgentAuthorized(req)) return json(res, configuredAgentToken ? 401 : 503, { error: configuredAgentToken ? "Agent authorization required" : "Agent mutation API is disabled until VENDOR_SCOUT_AGENT_TOKEN is configured" });
+      const missionId = decodeURIComponent(counterMatch[1]);
+      const supplierId = decodeURIComponent(counterMatch[2]);
+      const body = await readJsonBody(req);
+      const snapshot = await serializeMutation(() => {
+        if (body.action === "prepare") return prepareMissionCounter(missionId, supplierId);
+        if (body.action === "send") return sendPreparedCounter(missionId, supplierId);
+        throw httpError(400, "Counter action must be prepare or send");
+      });
       return json(res, 200, snapshot);
     }
 
